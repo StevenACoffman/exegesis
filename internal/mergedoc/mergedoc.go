@@ -36,6 +36,39 @@ func Parse(md string) ([]book2skill.MergeStatusEntry, error) {
 	return entries, nil
 }
 
+// ParseVerification reads the leading YAML frontmatter of a source-verification
+// artifact into a SourceVerification. ok is false (with a nil error) when the
+// document has no `---` frontmatter block.
+func ParseVerification(md string) (*book2skill.SourceVerification, bool, error) {
+	front, ok := frontmatter(md)
+	if !ok {
+		return nil, false, nil
+	}
+	var sv book2skill.SourceVerification
+	if err := yaml.Unmarshal([]byte(front), &sv); err != nil {
+		return nil, false, fmt.Errorf("mergedoc: parse verification header: %w", err)
+	}
+	return &sv, true, nil
+}
+
+// frontmatter returns the text between a leading "---" line and the next "---",
+// and whether such a block was found.
+func frontmatter(md string) (string, bool) {
+	lines := strings.Split(md, "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return "", false
+	}
+	var buf strings.Builder
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "---" {
+			return buf.String(), true
+		}
+		buf.WriteString(line)
+		buf.WriteByte('\n')
+	}
+	return "", false
+}
+
 // Append adds e to the skill's merge-status ledger and returns the updated
 // markdown. It is append-only: existing entries are preserved and the section is
 // rewritten with the full list, created at the end of the document when absent.

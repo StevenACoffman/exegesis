@@ -291,6 +291,42 @@ func TestA2CheckSharpAndDull(t *testing.T) {
 	}
 }
 
+func TestMergeIndexVerificationSummary(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	src := filepath.Join(base, "munger")
+	tree := filepath.Join(base, "decisions")
+	writeFile(
+		t,
+		filepath.Join(src, "BOOK_OVERVIEW.md"),
+		"# PC — Book Overview\n\n- **Author:** M\n",
+	)
+	// A rejected pair recorded in the ledger supplies the V1–V4 column.
+	writeFile(
+		t,
+		filepath.Join(src, "inv", "SKILL.md"),
+		"# Inv\n\n## Merge Status\n\n```yaml\n- run: decisions\n  state: rejected\n  pair: inv-vs-ctrl\n  reason: v3-failed\n```\n",
+	)
+	writeFile(t, filepath.Join(tree, "combined", "SKILL.md"), "# Combined\n\nbody\n")
+	// A verification artifact header for the same pair.
+	writeFile(t, filepath.Join(tree, "source-verification", "inv-vs-ctrl-r.md"),
+		"---\npair: inv-vs-ctrl\ncheck: r-quote-accuracy\nsources:\n"+
+			"  - book: munger\n    skill: inv\n    status: not-found\n---\n\nnotes\n")
+
+	if _, err := run(t, "merge-index", "--source", src, tree); err != nil {
+		t.Fatalf("merge-index: %v", err)
+	}
+	got := readFile(t, filepath.Join(tree, "INDEX.md"))
+	for _, want := range []string{
+		"## Source Verification Summary", "`inv-vs-ctrl`",
+		"munger/inv: not-found", "v3-failed",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("INDEX.md summary missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestMergeIndexGeneratesAndChecks(t *testing.T) {
 	t.Parallel()
 	base := t.TempDir()

@@ -68,6 +68,29 @@ func TestMergeStatusEntryValidate(t *testing.T) {
 	}
 }
 
+func TestSourceVerificationValidate(t *testing.T) {
+	t.Parallel()
+	good := book2skill.SourceVerification{
+		Pair: "p", Check: book2skill.CheckA1Attribution,
+		Sources: []book2skill.VerificationSource{
+			{Book: "b", Skill: "s", Status: book2skill.StatusVerified},
+		},
+	}
+	if problems := good.Validate(); len(problems) != 0 {
+		t.Fatalf("expected valid, got %v", problems)
+	}
+	bad := book2skill.SourceVerification{
+		Check:   "bogus-check",
+		Sources: []book2skill.VerificationSource{{Book: "b", Status: "bogus-status"}},
+	}
+	problems := bad.Validate()
+	for _, want := range []string{"pair is required", "unknown check", "unknown status"} {
+		if !containsSubstring(problems, want) {
+			t.Errorf("expected a problem containing %q, got %v", want, problems)
+		}
+	}
+}
+
 func containsSubstring(problems []string, want string) bool {
 	for _, p := range problems {
 		if want != "" && strings.Contains(p, want) {

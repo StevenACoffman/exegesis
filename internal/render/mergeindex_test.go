@@ -31,6 +31,22 @@ func TestMergeIndexRenders(t *testing.T) {
 				Superseded: map[string]bool{"control-dichotomy": true},
 			},
 		},
+		Verification: []book2skill.VerificationRow{
+			{
+				Pair: "inversion-vs-control",
+				R: []book2skill.VerificationSource{
+					{Book: "munger", Skill: "inversion", Status: book2skill.StatusAccurate},
+					{
+						Book: "aurelius", Skill: "control-dichotomy",
+						Status: book2skill.StatusDriftedMinor, Corrected: true,
+					},
+				},
+				A1: []book2skill.VerificationSource{
+					{Book: "munger", Skill: "inversion", Status: book2skill.StatusVerified},
+				},
+				Validations: "all pass",
+			},
+		},
 		Merges: []book2skill.MergeRecord{{
 			Slug: "inversion-and-control", Title: "Inversion and Control",
 			Parents: []book2skill.MergeParent{
@@ -61,6 +77,9 @@ func TestMergeIndexRenders(t *testing.T) {
 		"-->|composes-with| s_munger_circle_of_competence",
 		"classDef merged",
 		"`munger/inversion`",
+		"## Source Verification Summary",
+		"aurelius/control-dichotomy: drifted-minor (corrected)",
+		"| `inversion-vs-control` |",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("MergeIndex output missing %q\n---\n%s", want, out)

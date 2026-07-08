@@ -19,6 +19,33 @@ func TestParseNoSection(t *testing.T) {
 	}
 }
 
+func TestParseVerification(t *testing.T) {
+	t.Parallel()
+	md := "---\npair: inv-vs-control\ncheck: r-quote-accuracy\nsources:\n" +
+		"  - book: munger\n    skill: inversion\n    status: accurate\n" +
+		"  - book: aurelius\n    skill: control\n    status: drifted-minor\n    corrected: true\n" +
+		"---\n\nnarrative for humans\n"
+	sv, ok, err := mergedoc.ParseVerification(md)
+	if err != nil || !ok {
+		t.Fatalf("ParseVerification ok=%v err=%v", ok, err)
+	}
+	if sv.Pair != "inv-vs-control" || sv.Check != book2skill.CheckRQuoteAccuracy {
+		t.Errorf("header = %+v", sv)
+	}
+	if len(sv.Sources) != 2 || !sv.Sources[1].Corrected ||
+		sv.Sources[1].Status != book2skill.StatusDriftedMinor {
+		t.Errorf("sources = %+v", sv.Sources)
+	}
+	if problems := sv.Validate(); len(problems) != 0 {
+		t.Errorf("well-formed header should validate, got %v", problems)
+	}
+
+	// No frontmatter -> ok=false, no error.
+	if _, ok, err := mergedoc.ParseVerification("# just a body\n"); ok || err != nil {
+		t.Errorf("expected ok=false,nil for a headerless doc; got ok=%v err=%v", ok, err)
+	}
+}
+
 func TestAppendCreatesSectionThenPreserves(t *testing.T) {
 	t.Parallel()
 	md := "---\nname: x\n---\n\n# Skill X\n\n## Provenance\n\n- **Source:** book\n"

@@ -19,7 +19,42 @@ func MergeIndex(mi *book2skill.MergeIndex) string {
 	renderProvenance(&b, mi.Merges)
 	renderMergeGraph(&b, mi)
 	renderSuperseded(&b, mi)
+	renderVerification(&b, mi.Verification)
 	return single(&b)
+}
+
+// renderVerification emits the Phase-1.5 summary table, aggregated from the
+// per-pair artifact headers. It is omitted entirely when no artifacts were found,
+// so a tree without source-verification does not carry an empty table.
+func renderVerification(b *strings.Builder, rows []book2skill.VerificationRow) {
+	if len(rows) == 0 {
+		return
+	}
+	fprintf(b, "## Source Verification Summary\n\n")
+	table := make([][]string, 0, len(rows))
+	for i := range rows {
+		r := rows[i]
+		table = append(table, []string{
+			"`" + r.Pair + "`", verdicts(r.R), verdicts(r.A1), r.Validations,
+		})
+	}
+	writeTable(b, []string{"Pair", "R Quote Accuracy", "A1 Attribution", "V1–V4"}, table)
+}
+
+// verdicts joins a pair's per-source verdicts as "book/skill: status[ (corrected)]".
+func verdicts(sources []book2skill.VerificationSource) string {
+	if len(sources) == 0 {
+		return "—"
+	}
+	parts := make([]string, 0, len(sources))
+	for _, s := range sources {
+		cell := s.Book + "/" + s.Skill + ": " + string(s.Status)
+		if s.Corrected {
+			cell += " (corrected)"
+		}
+		parts = append(parts, cell)
+	}
+	return strings.Join(parts, "; ")
 }
 
 func renderSourceBooks(b *strings.Builder, sources []book2skill.MergeSourceBook) {

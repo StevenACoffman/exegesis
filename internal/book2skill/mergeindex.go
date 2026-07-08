@@ -5,9 +5,10 @@ package book2skill
 // rendered by render.MergeIndex. The judgment-only sections of the merge INDEX
 // template (source-verification summary, free-text notes) are not modeled here.
 type MergeIndex struct {
-	RunSlug string
-	Sources []MergeSourceBook
-	Merges  []MergeRecord
+	RunSlug      string
+	Sources      []MergeSourceBook
+	Merges       []MergeRecord
+	Verification []VerificationRow // per-pair Phase-1.5 verdicts (may be empty)
 }
 
 // MergeSourceBook is one source book scanned by a merge run.
