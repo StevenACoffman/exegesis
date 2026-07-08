@@ -42,6 +42,30 @@ func TestIndexCommandWritesOrderedIndex(t *testing.T) {
 	}
 }
 
+func TestIndexPreservesHandAuthoredSections(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "skill-a", "SKILL.md"), "# Skill A\n")
+
+	if _, err := run(t, "index", dir); err != nil {
+		t.Fatalf("index: %v", err)
+	}
+	// Hand-add a section, then regenerate.
+	path := filepath.Join(dir, "INDEX.md")
+	writeFile(t, path, readFile(t, path)+"\n## Notes\n\nHand-authored observation.\n")
+	if _, err := run(t, "index", dir); err != nil {
+		t.Fatalf("index (regenerate): %v", err)
+	}
+	got := readFile(t, path)
+	if !strings.Contains(got, "## Notes") || !strings.Contains(got, "Hand-authored observation.") {
+		t.Errorf("regeneration clobbered the hand-authored section:\n%s", got)
+	}
+	// --check is not stale after preservation.
+	if _, err := run(t, "index", "--check", dir); err != nil {
+		t.Errorf("--check should pass with a preserved custom section: %v", err)
+	}
+}
+
 func TestIndexCheckFailsWhenStale(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -324,6 +348,36 @@ func TestMergeIndexVerificationSummary(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("INDEX.md summary missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestMergeIndexAutoDiscoversSources(t *testing.T) {
+	t.Parallel()
+	books := filepath.Join(t.TempDir(), "books")
+	tree := filepath.Join(books, "merged", "decisions")
+	// A sibling source book whose skill's ledger references the run "decisions".
+	src := filepath.Join(books, "munger")
+	writeFile(
+		t,
+		filepath.Join(src, "inv", "SKILL.md"),
+		"# Inv\n\n## Merge Status\n\n```yaml\n- run: decisions\n  state: merged\n  into: combined\n```\n",
+	)
+	writeFile(t, filepath.Join(tree, "combined", "SKILL.md"), "# Combined\n\nbody\n")
+
+	// No --source: it is discovered from the books/merged/ layout.
+	if _, err := run(t, "merge-index", tree); err != nil {
+		t.Fatalf("merge-index without --source should auto-discover: %v", err)
+	}
+	got := readFile(t, filepath.Join(tree, "INDEX.md"))
+	if !strings.Contains(got, "`munger/inv`") {
+		t.Errorf("auto-discovered source not in INDEX:\n%s", got)
+	}
+
+	// A non-canonical layout (tree not under books/merged/) cannot infer sources.
+	flat := t.TempDir()
+	writeFile(t, filepath.Join(flat, "combined", "SKILL.md"), "# Combined\n")
+	if _, err := run(t, "merge-index", flat); err == nil {
+		t.Error("merge-index should error when --source is absent and cannot be inferred")
 	}
 }
 

@@ -146,7 +146,7 @@ func (cfg *Config) mergeOutcomes(dir string, skills []book2skill.Skill) []gateOu
 		cfg.gateLint(dir),
 		gateTests(dir, skills, true),
 	}
-	if sources := splitCSV(cfg.Source); len(sources) > 0 {
+	if sources := cfg.mergeSources(dir); len(sources) > 0 {
 		outcomes = append(outcomes, cfg.gateA2Sharpness(dir, sources))
 	}
 	return outcomes
@@ -183,6 +183,21 @@ func (cfg *Config) gateA2Sharpness(tree string, sources []string) gateOutcome {
 		Name: "a2-sharpness", Advisory: true, Problems: notes,
 		Pass: len(notes) == 0 || !cfg.Strict,
 	}
+}
+
+// mergeSources returns the explicit --source dirs, or — when none are given —
+// the dirs discovered under the books/merged/ root. Discovery failure is
+// silent: the A2-sharpness gate is simply skipped (its source mapping is
+// unavailable) rather than failing the run.
+func (cfg *Config) mergeSources(tree string) []string {
+	if explicit := splitCSV(cfg.Source); len(explicit) > 0 {
+		return explicit
+	}
+	discovered, err := mergetree.DiscoverSources(tree)
+	if err != nil {
+		return nil
+	}
+	return discovered
 }
 
 func parentBodies(parents []book2skill.MergeParent, bookDir map[string]string) []string {

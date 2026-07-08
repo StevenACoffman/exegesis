@@ -42,17 +42,19 @@ func New(parent *root.Config) *Config {
 	cfg.Config = parent
 	cfg.Flags = ff.NewFlagSet("merge-index").SetParent(parent.Flags)
 	cfg.Flags.StringVar(&cfg.Source, 0, "source", "",
-		"comma-separated source book directories the merge drew from (required)")
+		"comma-separated source book dirs (optional under books/merged/: auto-discovered)")
 	cfg.Flags.BoolVar(&cfg.Check, 0, "check", "verify INDEX.md is current; exit 1 if stale")
 	cfg.Command = &ff.Command{
 		Name:      "merge-index",
-		Usage:     "exegesis merge-index --source <bookA>,<bookB> <merged-tree>",
+		Usage:     "exegesis merge-index [--source <bookA>,<bookB>] <merged-tree>",
 		ShortHelp: "regenerate the cross-book INDEX.md for a merged-skills tree",
 		LongHelp: `Regenerate <merged-tree>/INDEX.md from the merge-status ledgers on
-the source skills: source-books table, provenance table, cross-book graph, and
-superseded source skills. --check compares without writing (exit 1 if stale),
-padding-normalized so a formatted table still matches. Flags come before the
-directory. Judgment sections (source-verification summary, notes) are left to you.`,
+the source skills: source-books table, provenance table, cross-book graph,
+superseded source skills, and (from the artifact headers) the source-verification
+summary. When <merged-tree> is under a books/merged/ root, --source is optional —
+the contributing source books are discovered automatically. Hand-added sections
+below the generated ones are preserved. --check compares without writing (exit 1
+if stale), padding-normalized so a formatted table still matches.`,
 		Flags: cfg.Flags,
 		Exec:  cfg.exec,
 	}
@@ -64,31 +66,59 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
 		return einval("merge-index: a merged-tree directory is required")
 	}
-	sources := splitCSV(cfg.Source)
-	if len(sources) == 0 {
-		return einval("merge-index: at least one --source book directory is required")
-	}
 	tree := args[0]
+	sources, err := cfg.sources(tree)
+	if err != nil {
+		return err
+	}
 	model, err := mergetree.Assemble(tree, sources)
 	if err != nil {
 		return fmt.Errorf("merge-index: %w", err)
 	}
-	out := render.MergeIndex(model)
+	existing := readOrEmpty(filepath.Join(tree, indexFile))
+	out := book2skill.AppendCustomSections(render.MergeIndex(model), existing)
 	if cfg.Check {
-		return cfg.check(tree, out)
+		return cfg.check(existing, out)
 	}
 	return cfg.write(tree, out)
 }
 
-func (cfg *Config) check(tree, want string) error {
-	got, err := os.ReadFile(filepath.Join(tree, indexFile))
-	if err != nil || !tableEqual(string(got), want) {
+// sources returns the explicit --source dirs, or — when none are given — the
+// dirs discovered under the books/merged/ root. It errors when neither yields
+// any source book.
+func (cfg *Config) sources(tree string) ([]string, error) {
+	if explicit := splitCSV(cfg.Source); len(explicit) > 0 {
+		return explicit, nil
+	}
+	discovered, err := mergetree.DiscoverSources(tree)
+	if err != nil {
+		return nil, einval(
+			"merge-index: no --source given and could not infer them (" + err.Error() + ")",
+		)
+	}
+	if len(discovered) == 0 {
+		return nil, einval("merge-index: no --source given and no contributing source books found")
+	}
+	return discovered, nil
+}
+
+func (cfg *Config) check(existing, want string) error {
+	if !tableEqual(existing, want) {
 		_, _ = fmt.Fprintln(cfg.Stderr,
 			"merge-index: "+indexFile+" is stale; run `exegesis merge-index` to regenerate")
 		return root.ExitError(1)
 	}
 	_, _ = fmt.Fprintln(cfg.Stdout, indexFile+" is up to date")
 	return nil
+}
+
+// readOrEmpty returns the file's contents, or "" if it cannot be read.
+func readOrEmpty(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func (cfg *Config) write(tree, out string) error {

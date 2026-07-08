@@ -75,9 +75,10 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if msg := book2skill.RelationshipCountAdvice(skills); msg != "" {
 		_, _ = fmt.Fprintln(cfg.Stderr, "warning: "+msg)
 	}
-	out := render.Index(cfg.overview(dir), skills)
+	existing := readOrEmpty(filepath.Join(dir, store.IndexFile))
+	out := book2skill.AppendCustomSections(render.Index(cfg.overview(dir), skills), existing)
 	if cfg.Check {
-		return cfg.check(dir, out)
+		return cfg.check(existing, out)
 	}
 	return cfg.write(dir, out)
 }
@@ -102,15 +103,23 @@ func (cfg *Config) overview(dir string) *book2skill.BookOverview {
 	return o
 }
 
-func (cfg *Config) check(dir, want string) error {
-	got, err := os.ReadFile(filepath.Join(dir, store.IndexFile))
-	if err != nil || string(got) != want {
+func (cfg *Config) check(existing, want string) error {
+	if existing != want {
 		_, _ = fmt.Fprintln(cfg.Stderr,
 			"index: "+store.IndexFile+" is stale; run `exegesis index` to regenerate")
 		return root.ExitError(1)
 	}
 	_, _ = fmt.Fprintln(cfg.Stdout, store.IndexFile+" is up to date")
 	return nil
+}
+
+// readOrEmpty returns the file's contents, or "" if it cannot be read.
+func readOrEmpty(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func (cfg *Config) write(dir, out string) error {

@@ -17,7 +17,68 @@ import (
 	"github.com/StevenACoffman/exegesis/internal/store"
 )
 
-const verificationDir = "source-verification"
+const (
+	verificationDir = "source-verification"
+	mergedDirName   = "merged"
+)
+
+// DiscoverSources returns the source book directories that contributed to a
+// merged tree: the sibling directories of merged/ under the books root whose
+// skills carry a merge-status entry for this run. It errors when tree is not
+// under a books/merged/ layout, so a caller can fall back to explicit --source.
+func DiscoverSources(tree string) ([]string, error) {
+	clean := filepath.Clean(tree)
+	mergedDir := filepath.Dir(clean)
+	if filepath.Base(mergedDir) != mergedDirName {
+		return nil, fmt.Errorf(
+			"mergetree: cannot infer sources: %s is not under a books/%s/ root",
+			tree,
+			mergedDirName,
+		)
+	}
+	booksRoot := filepath.Dir(mergedDir)
+	runSlug := filepath.Base(clean)
+	entries, err := os.ReadDir(booksRoot)
+	if err != nil {
+		return nil, fmt.Errorf("mergetree: %w", err)
+	}
+	var sources []string
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == mergedDirName {
+			continue
+		}
+		dir := filepath.Join(booksRoot, e.Name())
+		if bookHasRun(dir, runSlug) {
+			sources = append(sources, dir)
+		}
+	}
+	return sources, nil
+}
+
+// bookHasRun reports whether any skill under dir has a merge-status entry for
+// runSlug (i.e. the book participated in that merge run).
+func bookHasRun(dir, runSlug string) bool {
+	skills, err := store.GatherSkills(dir)
+	if err != nil {
+		return false
+	}
+	for i := range skills {
+		data, err := os.ReadFile(filepath.Join(dir, skills[i].Slug, store.SkillFile))
+		if err != nil {
+			continue
+		}
+		entries, err := mergedoc.Parse(string(data))
+		if err != nil {
+			continue
+		}
+		for j := range entries {
+			if entries[j].Run == runSlug {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // Assemble builds the merge-index model for a merged tree from the source books'
 // merge-status ledgers. The run slug is the merged tree's directory name; only
