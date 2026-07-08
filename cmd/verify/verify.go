@@ -70,7 +70,7 @@ func New(parent *root.Config) *Config {
 	cfg.Flags.BoolVar(&cfg.Strict, 0, "strict", "treat lint warnings as failures")
 	cfg.Flags.BoolVar(&cfg.Merge, 0, "merge",
 		"verify a merged tree: MERGE_OVERVIEW.md + lint + the merge test gate")
-	cfg.Flags.StringVar(&cfg.Source, 0, "source", "",
+	cfg.Flags.StringVar(&cfg.Source, 0, "source-book", "",
 		"comma-separated source book dirs; enables the A2-sharpness advisory gate (--merge)")
 	cfg.Command = &ff.Command{
 		Name:      "verify",

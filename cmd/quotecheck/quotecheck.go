@@ -33,14 +33,14 @@ func New(parent *root.Config) *Config {
 	var cfg Config
 	cfg.Config = parent
 	cfg.Flags = ff.NewFlagSet("quotecheck").SetParent(parent.Flags)
-	cfg.Flags.StringVar(&cfg.Source, 0, "source", "",
+	cfg.Flags.StringVar(&cfg.Source, 0, "source-text", "",
 		"comma-separated plain-text source file(s) to search for the R-segment quotes")
 	cfg.Command = &ff.Command{
 		Name:      "quotecheck",
-		Usage:     "exegesis quotecheck --source <a.txt[,b.txt]> <skill-dir>",
+		Usage:     "exegesis quotecheck --source-text <a.txt[,b.txt]> <skill-dir>",
 		ShortHelp: "verify a skill's R-segment quotes appear in the source text",
 		LongHelp: `Check that every quote in <skill-dir>/SKILL.md's R (Reading)
-segment appears verbatim (whitespace-normalized) in at least one --source text
+segment appears verbatim (whitespace-normalized) in at least one --source-text
 file. Flags quotes found in no source — the fabrication guard for merge-skills
 Phase 1.5. Sources must be plain text (extract EPUB/PDF first). Exit code is 1
 when any quote is unlocated.`,
@@ -57,7 +57,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	}
 	sources := splitCSV(cfg.Source)
 	if len(sources) == 0 {
-		return einval("quotecheck: at least one --source text file is required")
+		return einval("quotecheck: at least one --source-text file is required")
 	}
 	body, err := os.ReadFile(filepath.Join(args[0], skillFile))
 	if err != nil {

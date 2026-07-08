@@ -41,17 +41,17 @@ func New(parent *root.Config) *Config {
 	var cfg Config
 	cfg.Config = parent
 	cfg.Flags = ff.NewFlagSet("merge-index").SetParent(parent.Flags)
-	cfg.Flags.StringVar(&cfg.Source, 0, "source", "",
+	cfg.Flags.StringVar(&cfg.Source, 0, "source-book", "",
 		"comma-separated source book dirs (optional under books/merged/: auto-discovered)")
 	cfg.Flags.BoolVar(&cfg.Check, 0, "check", "verify INDEX.md is current; exit 1 if stale")
 	cfg.Command = &ff.Command{
 		Name:      "merge-index",
-		Usage:     "exegesis merge-index [--source <bookA>,<bookB>] <merged-tree>",
+		Usage:     "exegesis merge-index [--source-book <bookA>,<bookB>] <merged-tree>",
 		ShortHelp: "regenerate the cross-book INDEX.md for a merged-skills tree",
 		LongHelp: `Regenerate <merged-tree>/INDEX.md from the merge-status ledgers on
 the source skills: source-books table, provenance table, cross-book graph,
 superseded source skills, and (from the artifact headers) the source-verification
-summary. When <merged-tree> is under a books/merged/ root, --source is optional —
+summary. When <merged-tree> is under a books/merged/ root, --source-book is optional —
 the contributing source books are discovered automatically. Hand-added sections
 below the generated ones are preserved. --check compares without writing (exit 1
 if stale), padding-normalized so a formatted table still matches.`,
@@ -93,11 +93,13 @@ func (cfg *Config) sources(tree string) ([]string, error) {
 	discovered, err := mergetree.DiscoverSources(tree)
 	if err != nil {
 		return nil, einval(
-			"merge-index: no --source given and could not infer them (" + err.Error() + ")",
+			"merge-index: no --source-book given and could not infer them (" + err.Error() + ")",
 		)
 	}
 	if len(discovered) == 0 {
-		return nil, einval("merge-index: no --source given and no contributing source books found")
+		return nil, einval(
+			"merge-index: no --source-book given and no contributing source books found",
+		)
 	}
 	return discovered, nil
 }

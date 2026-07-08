@@ -234,13 +234,13 @@ func TestQuoteCheckFindsAndFlags(t *testing.T) {
 
 	// Quote present → pass.
 	writeFile(t, src, "Some preamble. Invert, always invert. And more.")
-	if _, err := run(t, "quotecheck", "--source", src, skill); err != nil {
+	if _, err := run(t, "quotecheck", "--source-text", src, skill); err != nil {
 		t.Fatalf("quotecheck should pass when the quote is present: %v", err)
 	}
 
 	// Quote absent → fail with a MISS.
 	writeFile(t, src, "This text does not contain the citation at all.")
-	out, err := run(t, "quotecheck", "--source", src, skill)
+	out, err := run(t, "quotecheck", "--source-text", src, skill)
 	assertExit1(t, err)
 	if !strings.Contains(out, "MISS") {
 		t.Errorf("expected a MISS for the unlocated quote, got:\n%s", out)
@@ -293,7 +293,7 @@ func TestA2CheckSharpAndDull(t *testing.T) {
 	writeFile(t, filepath.Join(srcA, "SKILL.md"), a2("shared"))
 
 	// Two unique signals → OK (advisory).
-	out, err := run(t, "a2check", "--source", srcA, merged)
+	out, err := run(t, "a2check", "--source-skill", srcA, merged)
 	if err != nil {
 		t.Fatalf("a2check: %v", err)
 	}
@@ -303,14 +303,14 @@ func TestA2CheckSharpAndDull(t *testing.T) {
 
 	// A dull merged A2 (no unique signals) warns, and --strict fails.
 	writeFile(t, filepath.Join(merged, "SKILL.md"), a2("shared"))
-	out, err = run(t, "a2check", "--source", srcA, merged)
+	out, err = run(t, "a2check", "--source-skill", srcA, merged)
 	if err != nil {
 		t.Fatalf("a2check advisory should not error: %v", err)
 	}
 	if !strings.Contains(out, "WARN") {
 		t.Errorf("expected WARN for a dull A2, got:\n%s", out)
 	}
-	if _, err := run(t, "a2check", "--strict", "--source", srcA, merged); err == nil {
+	if _, err := run(t, "a2check", "--strict", "--source-skill", srcA, merged); err == nil {
 		t.Error("--strict should fail a dull A2")
 	}
 }
@@ -337,7 +337,7 @@ func TestMergeIndexVerificationSummary(t *testing.T) {
 		"---\npair: inv-vs-ctrl\ncheck: r-quote-accuracy\nsources:\n"+
 			"  - book: munger\n    skill: inv\n    status: not-found\n---\n\nnotes\n")
 
-	if _, err := run(t, "merge-index", "--source", src, tree); err != nil {
+	if _, err := run(t, "merge-index", "--source-book", src, tree); err != nil {
 		t.Fatalf("merge-index: %v", err)
 	}
 	got := readFile(t, filepath.Join(tree, "INDEX.md"))
@@ -364,9 +364,9 @@ func TestMergeIndexAutoDiscoversSources(t *testing.T) {
 	)
 	writeFile(t, filepath.Join(tree, "combined", "SKILL.md"), "# Combined\n\nbody\n")
 
-	// No --source: it is discovered from the books/merged/ layout.
+	// No --source-book: it is discovered from the books/merged/ layout.
 	if _, err := run(t, "merge-index", tree); err != nil {
-		t.Fatalf("merge-index without --source should auto-discover: %v", err)
+		t.Fatalf("merge-index without --source-book should auto-discover: %v", err)
 	}
 	got := readFile(t, filepath.Join(tree, "INDEX.md"))
 	if !strings.Contains(got, "`munger/inv`") {
@@ -377,7 +377,7 @@ func TestMergeIndexAutoDiscoversSources(t *testing.T) {
 	flat := t.TempDir()
 	writeFile(t, filepath.Join(flat, "combined", "SKILL.md"), "# Combined\n")
 	if _, err := run(t, "merge-index", flat); err == nil {
-		t.Error("merge-index should error when --source is absent and cannot be inferred")
+		t.Error("merge-index should error when --source-book is absent and cannot be inferred")
 	}
 }
 
@@ -397,7 +397,7 @@ func TestMergeIndexGeneratesAndChecks(t *testing.T) {
 	tree := filepath.Join(base, "decisions")
 	writeFile(t, filepath.Join(tree, "combined", "SKILL.md"), "# Combined\n\nbody\n")
 
-	if _, err := run(t, "merge-index", "--source", src, tree); err != nil {
+	if _, err := run(t, "merge-index", "--source-book", src, tree); err != nil {
 		t.Fatalf("merge-index: %v", err)
 	}
 	got := readFile(t, filepath.Join(tree, "INDEX.md"))
@@ -405,13 +405,13 @@ func TestMergeIndexGeneratesAndChecks(t *testing.T) {
 		t.Fatalf("INDEX.md missing provenance/graph:\n%s", got)
 	}
 	// --check passes right after generation, and is padding-tolerant.
-	if _, err := run(t, "merge-index", "--check", "--source", src, tree); err != nil {
+	if _, err := run(t, "merge-index", "--check", "--source-book", src, tree); err != nil {
 		t.Errorf("--check should pass a freshly generated INDEX.md: %v", err)
 	}
 	// Padding the table (as a formatter would) must not make --check stale.
 	padded := strings.ReplaceAll(got, "| `munger/inversion` |", "| `munger/inversion`   |")
 	writeFile(t, filepath.Join(tree, "INDEX.md"), padded)
-	if _, err := run(t, "merge-index", "--check", "--source", src, tree); err != nil {
+	if _, err := run(t, "merge-index", "--check", "--source-book", src, tree); err != nil {
 		t.Errorf("--check should tolerate table padding: %v", err)
 	}
 }
@@ -494,7 +494,7 @@ func TestVerifyMergeA2SharpnessAdvisory(t *testing.T) {
 		"# Src\n\n## A2 — Trigger\n\n### Language Signals\n\n- \"how do I succeed at X\"\n\n"+
 			"## Merge Status\n\n```yaml\n- run: decisions\n  state: merged\n  into: inversion-thinking\n```\n")
 
-	out, err := run(t, "verify", "--merge", "--source", src, tree)
+	out, err := run(t, "verify", "--merge", "--source-book", src, tree)
 	if err != nil {
 		t.Fatalf("advisory a2-sharpness must not fail the run: %v\n%s", err, out)
 	}
@@ -502,7 +502,7 @@ func TestVerifyMergeA2SharpnessAdvisory(t *testing.T) {
 		t.Errorf("expected an a2-sharpness WARN, got:\n%s", out)
 	}
 	// --strict escalates the advisory to a failure.
-	if _, err := run(t, "verify", "--merge", "--strict", "--source", src, tree); err == nil {
+	if _, err := run(t, "verify", "--merge", "--strict", "--source-book", src, tree); err == nil {
 		t.Error("--strict should fail when A2 is not sharp")
 	}
 }

@@ -35,12 +35,12 @@ func New(parent *root.Config) *Config {
 	var cfg Config
 	cfg.Config = parent
 	cfg.Flags = ff.NewFlagSet("a2check").SetParent(parent.Flags)
-	cfg.Flags.StringVar(&cfg.Source, 0, "source", "",
+	cfg.Flags.StringVar(&cfg.Source, 0, "source-skill", "",
 		"comma-separated source skill directories the merged skill was built from")
 	cfg.Flags.BoolVar(&cfg.Strict, 0, "strict", "exit 1 (not just warn) when the gate is not met")
 	cfg.Command = &ff.Command{
 		Name:      "a2check",
-		Usage:     "exegesis a2check --source <srcA-dir>,<srcB-dir> <merged-skill-dir>",
+		Usage:     "exegesis a2check --source-skill <srcA-dir>,<srcB-dir> <merged-skill-dir>",
 		ShortHelp: "measure a merged skill's A2 sharpness against its source skills",
 		LongHelp: `Report the language signals in the merged skill's A2 that neither
 source skill has. At least 2 unique signals satisfies the structural half of
@@ -60,7 +60,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	}
 	sources := splitCSV(cfg.Source)
 	if len(sources) == 0 {
-		return einval("a2check: at least one --source skill directory is required")
+		return einval("a2check: at least one --source-skill directory is required")
 	}
 	merged, err := readSkill(args[0])
 	if err != nil {
