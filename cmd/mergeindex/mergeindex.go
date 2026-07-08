@@ -18,9 +18,8 @@ import (
 
 	"github.com/StevenACoffman/exegesis/cmd/root"
 	"github.com/StevenACoffman/exegesis/internal/book2skill"
-	"github.com/StevenACoffman/exegesis/internal/mergedoc"
+	"github.com/StevenACoffman/exegesis/internal/mergetree"
 	"github.com/StevenACoffman/exegesis/internal/render"
-	"github.com/StevenACoffman/exegesis/internal/store"
 )
 
 const (
@@ -70,90 +69,15 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 		return einval("merge-index: at least one --source book directory is required")
 	}
 	tree := args[0]
-	model, err := assemble(tree, sources)
+	model, err := mergetree.Assemble(tree, sources)
 	if err != nil {
-		return err
+		return fmt.Errorf("merge-index: %w", err)
 	}
 	out := render.MergeIndex(model)
 	if cfg.Check {
 		return cfg.check(tree, out)
 	}
 	return cfg.write(tree, out)
-}
-
-// assemble builds the merge-index model from the merged tree and source books.
-func assemble(tree string, sources []string) (*book2skill.MergeIndex, error) {
-	runSlug := filepath.Base(filepath.Clean(tree))
-	merged, err := store.GatherSkills(tree)
-	if err != nil {
-		return nil, fmt.Errorf("merge-index: %w", err)
-	}
-	parents := make(map[string][]book2skill.MergeParent)
-	model := &book2skill.MergeIndex{RunSlug: runSlug}
-	for _, srcDir := range sources {
-		book, err := readSourceBook(srcDir, runSlug, parents)
-		if err != nil {
-			return nil, err
-		}
-		model.Sources = append(model.Sources, book)
-	}
-	for i := range merged {
-		model.Merges = append(model.Merges, book2skill.MergeRecord{
-			Slug: merged[i].Slug, Title: merged[i].Title, Parents: parents[merged[i].Slug],
-		})
-	}
-	return model, nil
-}
-
-// readSourceBook reads one source book and records, per merged skill, the source
-// skills whose ledger says they merged into it during runSlug.
-func readSourceBook(
-	srcDir, runSlug string, parents map[string][]book2skill.MergeParent,
-) (book2skill.MergeSourceBook, error) {
-	slug := filepath.Base(filepath.Clean(srcDir))
-	book := book2skill.MergeSourceBook{Slug: slug, Title: slug, Superseded: map[string]bool{}}
-	if o, ok, _ := store.ReadOverview(srcDir); ok {
-		book.Title, book.Author = o.Title, o.Author
-	}
-	skills, err := store.GatherSkills(srcDir)
-	if err != nil {
-		return book, fmt.Errorf("merge-index: %w", err)
-	}
-	for i := range skills {
-		sk := skills[i].Slug
-		book.Skills = append(book.Skills, sk)
-		data, readErr := os.ReadFile(filepath.Join(srcDir, sk, store.SkillFile))
-		if readErr != nil {
-			continue
-		}
-		entries, parseErr := mergedoc.Parse(string(data))
-		if parseErr != nil {
-			return book, fmt.Errorf("merge-index: %w", parseErr)
-		}
-		recordParents(entries, runSlug, slug, sk, book.Superseded, parents)
-	}
-	return book, nil
-}
-
-func recordParents(
-	entries []book2skill.MergeStatusEntry,
-	runSlug, bookSlug, skillSlug string,
-	superseded map[string]bool,
-	parents map[string][]book2skill.MergeParent,
-) {
-	for j := range entries {
-		e := entries[j]
-		if e.Run != runSlug || e.Into == "" {
-			continue
-		}
-		if e.State != book2skill.StateMerged && e.State != book2skill.StatePartial {
-			continue
-		}
-		superseded[skillSlug] = true
-		parents[e.Into] = append(parents[e.Into], book2skill.MergeParent{
-			BookSlug: bookSlug, SkillSlug: skillSlug, State: e.State,
-		})
-	}
 }
 
 func (cfg *Config) check(tree, want string) error {

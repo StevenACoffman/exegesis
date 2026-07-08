@@ -42,6 +42,7 @@ type appendConfig struct {
 	Into     string
 	Reason   string
 	Excluded string
+	Link     bool
 	Flags    *ff.FlagSet
 	Command  *ff.Command
 }
@@ -80,6 +81,8 @@ func newAppend(parent *Config) {
 	cfg.Flags.StringVar(&cfg.Into, 0, "into", "", "merged skill slug (for merged/partial)")
 	cfg.Flags.StringVar(&cfg.Reason, 0, "reason", "", "rejection reason code (for rejected)")
 	cfg.Flags.StringVar(&cfg.Excluded, 0, "excluded", "", "excluded content (for partial)")
+	cfg.Flags.BoolVar(&cfg.Link, 0, "link",
+		"also add a `superseded-by: <into>` bullet to ## Related Skills (merged/partial)")
 	cfg.Command = &ff.Command{
 		Name:      "append",
 		Usage:     "exegesis merge-status append [FLAGS] <skill-dir>",
@@ -111,11 +114,32 @@ func (cfg *appendConfig) exec(_ context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("merge-status append: %w", err)
 	}
+	linked := cfg.maybeLink(&entry, &out)
 	if err := os.WriteFile(path, []byte(out), filePerm); err != nil {
 		return &book2skill.Error{Op: "mergestatus.append", Err: err}
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "appended %s entry (run %s) to %s\n", cfg.State, cfg.Run, path)
+	if linked {
+		_, _ = fmt.Fprintf(cfg.Stdout, "linked superseded-by -> %s\n", cfg.Into)
+	}
 	return nil
+}
+
+// maybeLink adds a `superseded-by: <into>` relationship bullet to md when --link
+// is set and the entry supersedes this skill (merged/partial with an into).
+// Idempotent; reports whether a bullet was added.
+func (cfg *appendConfig) maybeLink(entry *book2skill.MergeStatusEntry, md *string) bool {
+	if !cfg.Link || entry.Into == "" {
+		return false
+	}
+	if entry.State != book2skill.StateMerged && entry.State != book2skill.StatePartial {
+		return false
+	}
+	updated, changed := book2skill.AppendRelated(*md, book2skill.Relationship{
+		Kind: book2skill.SupersededBy, To: entry.Into,
+	})
+	*md = updated
+	return changed
 }
 
 func newCheck(parent *Config) {

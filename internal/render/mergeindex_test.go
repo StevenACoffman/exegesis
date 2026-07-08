@@ -17,6 +17,9 @@ func TestMergeIndexRenders(t *testing.T) {
 				Slug: "munger", Title: "Poor Charlie's Almanack", Author: "Munger",
 				Skills:     []string{"inversion", "circle-of-competence"},
 				Superseded: map[string]bool{"inversion": true},
+				Edges: []book2skill.Relationship{
+					{From: "circle-of-competence", To: "inversion", Kind: book2skill.DependsOn},
+				},
 			},
 			{
 				Slug:   "aurelius",
@@ -38,6 +41,10 @@ func TestMergeIndexRenders(t *testing.T) {
 					State:     book2skill.StateMerged,
 				},
 			},
+			Edges: []book2skill.Relationship{{
+				From: "inversion-and-control", To: "circle-of-competence",
+				Kind: book2skill.ComposesWith,
+			}},
 		}},
 	}
 	out := render.MergeIndex(mi)
@@ -50,6 +57,8 @@ func TestMergeIndexRenders(t *testing.T) {
 		"## Superseded Source Skills",
 		"[`inversion-and-control`](./inversion-and-control/SKILL.md)",
 		"-->|superseded-by|",
+		"-->|depends-on| s_munger_inversion",
+		"-->|composes-with| s_munger_circle_of_competence",
 		"classDef merged",
 		"`munger/inversion`",
 	} {

@@ -19,6 +19,7 @@ import (
 
 	"github.com/StevenACoffman/exegesis/cmd/root"
 	"github.com/StevenACoffman/exegesis/internal/book2skill"
+	"github.com/StevenACoffman/exegesis/internal/mergetree"
 	"github.com/StevenACoffman/exegesis/internal/render"
 	"github.com/StevenACoffman/exegesis/internal/skilllint"
 	"github.com/StevenACoffman/exegesis/internal/store"
@@ -36,10 +37,12 @@ const (
 	gateIndexKey    = "index"
 )
 
-// gateOutcome is the result of one verification gate.
+// gateOutcome is the result of one verification gate. An advisory gate prints
+// its problems as warnings without failing the run unless --strict is set.
 type gateOutcome struct {
 	Name     string   `json:"gate"`
 	Pass     bool     `json:"pass"`
+	Advisory bool     `json:"advisory,omitempty"`
 	Problems []string `json:"problems,omitempty"`
 	Detail   string   `json:"detail,omitempty"`
 }
@@ -49,6 +52,7 @@ type Config struct {
 	*root.Config
 	Format  string
 	Gates   string
+	Source  string
 	Strict  bool
 	Merge   bool
 	Flags   *ff.FlagSet
@@ -66,6 +70,8 @@ func New(parent *root.Config) *Config {
 	cfg.Flags.BoolVar(&cfg.Strict, 0, "strict", "treat lint warnings as failures")
 	cfg.Flags.BoolVar(&cfg.Merge, 0, "merge",
 		"verify a merged tree: MERGE_OVERVIEW.md + lint + the merge test gate")
+	cfg.Flags.StringVar(&cfg.Source, 0, "source", "",
+		"comma-separated source book dirs; enables the A2-sharpness advisory gate (--merge)")
 	cfg.Command = &ff.Command{
 		Name:      "verify",
 		Usage:     "exegesis verify [FLAGS] <book-dir>",
@@ -135,11 +141,66 @@ func (cfg *Config) bookOutcomes(dir string, skills []book2skill.Skill) ([]gateOu
 // gates do not apply (the merge index is a separate, deferred renderer), and
 // merge-status lives on the source skills, checked by `merge-status check`.
 func (cfg *Config) mergeOutcomes(dir string, skills []book2skill.Skill) []gateOutcome {
-	return []gateOutcome{
+	outcomes := []gateOutcome{
 		gateMergeOverview(dir),
 		cfg.gateLint(dir),
 		gateTests(dir, skills, true),
 	}
+	if sources := splitCSV(cfg.Source); len(sources) > 0 {
+		outcomes = append(outcomes, cfg.gateA2Sharpness(dir, sources))
+	}
+	return outcomes
+}
+
+// gateA2Sharpness is an advisory gate: for each merged skill it reads the source
+// skills it was built from (via the ledgers) and flags A2 triggers that are not
+// structurally sharper than both sources. It never fails unless --strict.
+func (cfg *Config) gateA2Sharpness(tree string, sources []string) gateOutcome {
+	model, err := mergetree.Assemble(tree, sources)
+	if err != nil {
+		return gateOutcome{Name: "a2-sharpness", Problems: []string{err.Error()}}
+	}
+	bookDir := make(map[string]string, len(sources))
+	for _, d := range sources {
+		bookDir[filepath.Base(filepath.Clean(d))] = d
+	}
+	var notes []string
+	for i := range model.Merges {
+		m := model.Merges[i]
+		if len(m.Parents) == 0 {
+			continue
+		}
+		unique := book2skill.A2Sharpness(
+			readBody(filepath.Join(tree, m.Slug)),
+			parentBodies(m.Parents, bookDir),
+		)
+		if len(unique) < book2skill.MinSharpSignals {
+			notes = append(notes, m.Slug+": only "+strconv.Itoa(len(unique))+
+				" unique A2 signal(s) vs sources (want ≥"+strconv.Itoa(book2skill.MinSharpSignals)+")")
+		}
+	}
+	return gateOutcome{
+		Name: "a2-sharpness", Advisory: true, Problems: notes,
+		Pass: len(notes) == 0 || !cfg.Strict,
+	}
+}
+
+func parentBodies(parents []book2skill.MergeParent, bookDir map[string]string) []string {
+	var bodies []string
+	for _, p := range parents {
+		if d, ok := bookDir[p.BookSlug]; ok {
+			bodies = append(bodies, readBody(filepath.Join(d, p.SkillSlug)))
+		}
+	}
+	return bodies
+}
+
+func readBody(skillDir string) string {
+	data, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 // parseGates turns the --gates flag into a gate set; empty selects all four.
@@ -184,12 +245,16 @@ func (cfg *Config) reportText(outcomes []gateOutcome, skills []book2skill.Skill)
 	out := cfg.Stdout
 	for i := range outcomes {
 		o := outcomes[i]
+		warn := o.Pass && o.Advisory && len(o.Problems) > 0
 		status := "PASS"
-		if !o.Pass {
+		switch {
+		case !o.Pass:
 			status = "FAIL"
+		case warn:
+			status = "WARN"
 		}
 		_, _ = fmt.Fprintf(out, "%-16s %s\n", o.Name, status)
-		if !o.Pass {
+		if !o.Pass || warn {
 			for _, p := range o.Problems {
 				_, _ = fmt.Fprintln(out, "  - "+p)
 			}
@@ -320,6 +385,16 @@ func headerFor(dir string, overview *book2skill.BookOverview) *book2skill.BookOv
 
 func indent(s string) string {
 	return "    " + strings.ReplaceAll(s, "\n", "\n    ")
+}
+
+func splitCSV(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func einval(msg string) error {

@@ -17,6 +17,7 @@ type MergeSourceBook struct {
 	Author     string
 	Skills     []string        // skill slugs in this book, sorted
 	Superseded map[string]bool // skill slug -> superseded by a merged skill this run
+	Edges      []Relationship  // intra-book relationships (both ends in this book)
 }
 
 // MergeRecord is one merged skill and the source skills that fed it.
@@ -24,6 +25,7 @@ type MergeRecord struct {
 	Slug    string
 	Title   string
 	Parents []MergeParent
+	Edges   []Relationship // the merged skill's own ## Related Skills edges
 }
 
 // MergeParent is one source skill merged into a merged skill.

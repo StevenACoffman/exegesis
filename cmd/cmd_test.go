@@ -167,6 +167,26 @@ func TestMergeStatusAppendThenCheck(t *testing.T) {
 	}
 }
 
+func TestMergeStatusAppendLink(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	skill := filepath.Join(dir, "inversion")
+	writeFile(t, filepath.Join(skill, "SKILL.md"), "# Inversion\n\nbody\n")
+
+	if _, err := run(t, "merge-status", "append", "--link", "--run", "r1",
+		"--state", "merged", "--into", "combined", skill); err != nil {
+		t.Fatalf("append --link: %v", err)
+	}
+	got := readFile(t, filepath.Join(skill, "SKILL.md"))
+	if !strings.Contains(got, "## Merge Status") || !strings.Contains(got, "state: merged") {
+		t.Errorf("ledger entry missing:\n%s", got)
+	}
+	if !strings.Contains(got, "## Related Skills") ||
+		!strings.Contains(got, "superseded-by: `combined`") {
+		t.Errorf("superseded-by link missing:\n%s", got)
+	}
+}
+
 func TestMergeStatusCheckFlagsBadLedger(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -362,6 +382,38 @@ func TestVerifyMergePassesAndFails(t *testing.T) {
 	assertExit1(t, err)
 	if !strings.Contains(out, "test-prompts") || !strings.Contains(out, "FAIL") {
 		t.Errorf("expected merge test-prompts FAIL, got:\n%s", out)
+	}
+}
+
+func TestVerifyMergeA2SharpnessAdvisory(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	tree := filepath.Join(base, "decisions")
+	writeFile(t, filepath.Join(tree, "MERGE_OVERVIEW.md"), "# Merge\n\nsources and rationale\n")
+	s := validSkill() // slug inversion-thinking, one A2 language signal
+	writeFile(t, filepath.Join(tree, s.Slug, "SKILL.md"), render.Skill(s))
+	merged, err := book2skill.EncodeTestPrompts(book2skill.TemplateMergedTestCases())
+	if err != nil {
+		t.Fatalf("encode merged prompts: %v", err)
+	}
+	writeFile(t, filepath.Join(tree, s.Slug, "test-prompts.json"), string(merged))
+	// A source skill that merged into it, sharing the one A2 signal — so the
+	// merged A2 has no unique signal and the advisory gate warns.
+	src := filepath.Join(base, "munger")
+	writeFile(t, filepath.Join(src, "src-inv", "SKILL.md"),
+		"# Src\n\n## A2 — Trigger\n\n### Language Signals\n\n- \"how do I succeed at X\"\n\n"+
+			"## Merge Status\n\n```yaml\n- run: decisions\n  state: merged\n  into: inversion-thinking\n```\n")
+
+	out, err := run(t, "verify", "--merge", "--source", src, tree)
+	if err != nil {
+		t.Fatalf("advisory a2-sharpness must not fail the run: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "a2-sharpness") || !strings.Contains(out, "WARN") {
+		t.Errorf("expected an a2-sharpness WARN, got:\n%s", out)
+	}
+	// --strict escalates the advisory to a failure.
+	if _, err := run(t, "verify", "--merge", "--strict", "--source", src, tree); err == nil {
+		t.Error("--strict should fail when A2 is not sharp")
 	}
 }
 

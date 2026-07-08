@@ -53,8 +53,19 @@ func renderProvenance(b *strings.Builder, merges []book2skill.MergeRecord) {
 
 func renderMergeGraph(b *strings.Builder, mi *book2skill.MergeIndex) {
 	fprintf(b, "## Cross-Book Skill Graph\n\n```mermaid\ngraph LR\n")
-	for i := range mi.Sources {
-		s := mi.Sources[i]
+	renderSubgraphs(b, mi.Sources)
+	renderMergedNodes(b, mi.Merges)
+	renderMergedEdges(b, mi)
+	fprintf(b, "    classDef merged fill:#c8e6c9,stroke:#388e3c\n")
+	fprintf(b, "    classDef superseded fill:#ffe0b2,stroke:#e65100,stroke-dasharray:4 4\n")
+	fprintf(b, "```\n\n")
+}
+
+// renderSubgraphs draws one subgraph per source book: its skill nodes (superseded
+// ones tagged) and the intra-book relationship edges.
+func renderSubgraphs(b *strings.Builder, sources []book2skill.MergeSourceBook) {
+	for i := range sources {
+		s := sources[i]
 		fprintf(b, "    subgraph %q\n", s.Title)
 		for _, skill := range s.Skills {
 			class := ""
@@ -63,19 +74,65 @@ func renderMergeGraph(b *strings.Builder, mi *book2skill.MergeIndex) {
 			}
 			fprintf(b, "        %s[%q]%s\n", nodeID("s", s.Slug, skill), skill, class)
 		}
+		for _, e := range s.Edges {
+			fprintf(b, "        %s %s|%s| %s\n",
+				nodeID("s", s.Slug, e.From), arrow(e.Kind), e.Kind, nodeID("s", s.Slug, e.To))
+		}
 		fprintf(b, "    end\n")
 	}
-	for i := range mi.Merges {
-		m := mi.Merges[i]
+}
+
+func renderMergedNodes(b *strings.Builder, merges []book2skill.MergeRecord) {
+	for i := range merges {
+		m := merges[i]
 		fprintf(b, "    %s[%q]:::merged\n", nodeID("m", m.Slug), m.Slug)
 		for _, p := range m.Parents {
 			fprintf(b, "    %s -->|superseded-by| %s\n",
 				nodeID("s", p.BookSlug, p.SkillSlug), nodeID("m", m.Slug))
 		}
 	}
-	fprintf(b, "    classDef merged fill:#c8e6c9,stroke:#388e3c\n")
-	fprintf(b, "    classDef superseded fill:#ffe0b2,stroke:#e65100,stroke-dasharray:4 4\n")
-	fprintf(b, "```\n\n")
+}
+
+// renderMergedEdges draws each merged skill's own relationships to any node whose
+// slug resolves in the graph; unresolvable bare-slug targets are skipped.
+func renderMergedEdges(b *strings.Builder, mi *book2skill.MergeIndex) {
+	index := nodeIndex(mi)
+	for i := range mi.Merges {
+		m := mi.Merges[i]
+		for _, e := range m.Edges {
+			if e.Kind == book2skill.SupersededBy {
+				continue // the parent side already draws superseded-by
+			}
+			if target, ok := index[e.To]; ok {
+				fprintf(b, "    %s %s|%s| %s\n", nodeID("m", m.Slug), arrow(e.Kind), e.Kind, target)
+			}
+		}
+	}
+}
+
+// nodeIndex maps every source and merged skill slug to its graph node id. A slug
+// present in more than one source book resolves to the last one seen.
+func nodeIndex(mi *book2skill.MergeIndex) map[string]string {
+	index := make(map[string]string)
+	for i := range mi.Sources {
+		s := mi.Sources[i]
+		for _, skill := range s.Skills {
+			index[skill] = nodeID("s", s.Slug, skill)
+		}
+	}
+	for i := range mi.Merges {
+		index[mi.Merges[i].Slug] = nodeID("m", mi.Merges[i].Slug)
+	}
+	return index
+}
+
+// arrow returns the Mermaid arrow for a relationship kind: dashed for
+// contrasts-with, solid otherwise (matching the merge INDEX template).
+func arrow(kind book2skill.RelationshipKind) string {
+	if kind == book2skill.ContrastsWith {
+		return "-.->"
+	}
+	return "-->"
 }
 
 func renderSuperseded(b *strings.Builder, mi *book2skill.MergeIndex) {
