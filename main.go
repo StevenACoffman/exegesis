@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/peterbourgon/ff/v4"
+
 	"github.com/StevenACoffman/exegesis/cmd"
 	"github.com/StevenACoffman/exegesis/cmd/root"
 )

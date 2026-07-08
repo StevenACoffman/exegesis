@@ -16,9 +16,18 @@ import (
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 
+	"github.com/StevenACoffman/exegesis/cmd/a2check"
+	"github.com/StevenACoffman/exegesis/cmd/distill"
+	"github.com/StevenACoffman/exegesis/cmd/index"
+	"github.com/StevenACoffman/exegesis/cmd/link"
+	"github.com/StevenACoffman/exegesis/cmd/lint"
+	"github.com/StevenACoffman/exegesis/cmd/mergeindex"
+	"github.com/StevenACoffman/exegesis/cmd/mergestatus"
+	"github.com/StevenACoffman/exegesis/cmd/quotecheck"
 	"github.com/StevenACoffman/exegesis/cmd/root"
+	"github.com/StevenACoffman/exegesis/cmd/tests"
+	"github.com/StevenACoffman/exegesis/cmd/verify"
 	"github.com/StevenACoffman/exegesis/cmd/version"
-	// climax:imports
 )
 
 // Run parses args and dispatches to the matching command.
@@ -32,7 +41,16 @@ import (
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	r := root.New(stdin, stdout, stderr)
 	version.New(r)
-	// register new commands here
+	a2check.New(r)
+	distill.New(r)
+	index.New(r)
+	lint.New(r)
+	link.New(r)
+	mergeindex.New(r)
+	mergestatus.New(r)
+	quotecheck.New(r)
+	tests.New(r)
+	verify.New(r)
 
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("EXEGESIS")); err != nil {
 		_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command))

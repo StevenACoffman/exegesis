@@ -115,7 +115,7 @@ To target a specific release tag rather than the latest:
 gowheels pypi --name defederator --package-name defederator --repo StevenACoffman/defederator --version v0.5.0 --upload
 ```
 
----
+______________________________________________________________________
 
 ## Appendix: Automated PyPI Publishing via GitHub Actions
 
@@ -133,20 +133,24 @@ publish them to PyPI via OIDC in a single step — you do not need a
    before the first automated run.
 
 3. **Add a trusted publisher** on PyPI:
+
    - Go to your project page on PyPI → **Manage** → **Publishing**.
+
    - Under *Add a new publisher*, choose **GitHub Actions**.
+
    - Fill in the fields:
 
      | Field            | Value              |
      | ---------------- | ------------------ |
      | Owner            | `StevenACoffman`   |
-     | Repository name  | `defederator`           |
+     | Repository name  | `defederator`      |
      | Workflow name    | `postrelease.yaml` |
      | Environment name | `pypi`             |
 
    - Click **Add**.
 
 4. **Create the `pypi` environment** in the GitHub repository:
+
    - Go to the repository on GitHub → **Settings** → **Environments** → **New environment**.
    - Name it `pypi`.
    - Optionally add a required reviewer or deployment branch rule (for example,

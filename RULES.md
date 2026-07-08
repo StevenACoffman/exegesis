@@ -269,8 +269,8 @@ ______________________________________________________________________
 ## 5. Functional Core / Imperative Shell
 
 - Source: *(Bernhardt, Feathers)* The amount of code that mixes computation with state change determines
-how hard a system is to test and reason about. Push computation into a pure core; confine all
-mutation and side effects to a thin outer shell.
+  how hard a system is to test and reason about. Push computation into a pure core; confine all
+  mutation and side effects to a thin outer shell.
 
 **Pure core — Do:**
 
@@ -852,7 +852,7 @@ ______________________________________________________________________
 ## 9. Testing Philosophy
 
 - Source: *(Feathers)* Before writing a test, ask: what are you actually trying to accomplish?
-Testing serves three distinct goals:
+  Testing serves three distinct goals:
 - **Quality** — forcing deliberate thought before writing code (TDD, design-by-contract). The mechanism is the concentrated thinking, not the test catching a bug. Any practice that forces you to specify intent before writing code tends to produce similar quality results.
 - **Maintenance** — establishing behavioral invariants so code can be changed safely (regression suites, characterization tests).
 - **Validation** — confirming the software is acceptable to users. For tended systems with low domain risk, progressive production rollout is a legitimate validation strategy — **with the accountability condition**: the developer who ships the code must be the person who handles the consequences. That closed feedback loop changes behavior in ways that a QA gate does not. Do not apply this strategy to untended systems, regulated domains, or cases where failures cannot be quickly reversed.
