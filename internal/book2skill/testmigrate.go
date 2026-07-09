@@ -2,6 +2,7 @@ package book2skill
 
 import (
 	"encoding/json"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -19,8 +20,9 @@ type rawCase struct {
 // re-parses. It unwraps the common wrapper shapes (a top-level array, or an
 // object keyed by test_cases/prompts/test_prompts/tests, or category-grouped
 // should_trigger/should_not_trigger/edge_cases arrays), maps type/category
-// synonyms to the canonical set, renames expected_behavior to expected, and
-// renumbers ids sequentially.
+// synonyms to the canonical set, adopts the expected value from "expected" or
+// any "expected_*" variant, renumbers ids sequentially, and preserves every
+// other field in notes so nothing is dropped.
 //
 // It never fabricates a positive test's expected behavior: when a case has no
 // expected field it is defaulted only for should_not_trigger (where "skill
@@ -169,10 +171,7 @@ func normalizeTestType(raw string) TestType {
 // deriveExpected resolves the expected behavior, defaulting only the case where
 // it is provably correct (should_not_trigger) and warning otherwise.
 func deriveExpected(fields map[string]any, typ TestType, prefix string) (string, string) {
-	if e := jsonString(fields, "expected"); e != "" {
-		return e, ""
-	}
-	if e := jsonString(fields, "expected_behavior"); e != "" {
+	if e := expectedFromFields(fields); e != "" {
 		return e, ""
 	}
 	if typ == ShouldNotTrigger {
@@ -181,27 +180,65 @@ func deriveExpected(fields map[string]any, typ TestType, prefix string) (string,
 	return "", prefix + "no expected — author must supply"
 }
 
-// deriveNotes preserves the descriptive fields that neither darwin nor the gate
-// reads (rationale, must_include/exclude, a non-numeric source id) so migration
-// loses no authoring intent, without passing any of it off as the expectation.
+// expectedFromFields returns the first non-empty expected value: the "expected"
+// field, then any "expected_*" variant (expected_behavior, expected_skill_use,
+// expected_answer_summary, …) in a deterministic alphabetical order. Skill sets
+// in the wild carry the expectation under many such keys; reading them all keeps
+// migration from discarding an expectation the author already wrote.
+func expectedFromFields(fields map[string]any) string {
+	if e := jsonText(fields, "expected"); e != "" {
+		return e
+	}
+	variants := make([]string, 0)
+	for k := range fields {
+		if strings.HasPrefix(k, "expected_") {
+			variants = append(variants, k)
+		}
+	}
+	sort.Strings(variants)
+	for _, k := range variants {
+		if e := jsonText(fields, k); e != "" {
+			return e
+		}
+	}
+	return ""
+}
+
+// deriveNotes preserves every field not consumed into a canonical TestCase
+// (id/type/category/prompt/expected*) as "key: value", plus the original id when
+// it is a non-numeric label, in a deterministic order — so migration loses no
+// authoring intent (rationale, must_include, segment, trigger, …) without
+// passing any of it off as the expectation.
 func deriveNotes(fields map[string]any) string {
 	var parts []string
-	if n := jsonText(fields, "notes"); n != "" {
-		parts = append(parts, n)
-	}
-	if r := jsonText(fields, "rationale"); r != "" {
-		parts = append(parts, "rationale: "+r)
-	}
-	if inc := jsonText(fields, "must_include"); inc != "" {
-		parts = append(parts, "must include: "+inc)
-	}
-	if exc := jsonText(fields, "must_not_include"); exc != "" {
-		parts = append(parts, "must not include: "+exc)
-	}
-	if oid := jsonScalar(fields, "id"); oid != "" && !isIntString(oid) {
+	if oid := jsonText(fields, "id"); oid != "" && !isIntString(oid) {
 		parts = append(parts, "source id: "+oid)
 	}
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		if !isConsumedField(k) {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if v := jsonText(fields, k); v != "" {
+			parts = append(parts, k+": "+v)
+		}
+	}
 	return strings.Join(parts, "; ")
+}
+
+// isConsumedField reports whether key is mapped into a canonical TestCase field
+// and so must not be duplicated into notes. The original id is preserved
+// separately (only when non-numeric), so it counts as consumed here.
+func isConsumedField(key string) bool {
+	switch key {
+	case "id", "type", "category", "prompt", "expected":
+		return true
+	default:
+		return strings.HasPrefix(key, "expected_")
+	}
 }
 
 // jsonString returns fields[key] when it is a string, else "".
@@ -212,35 +249,32 @@ func jsonString(fields map[string]any, key string) string {
 	return ""
 }
 
-// jsonText returns fields[key] as text: a string as-is, or a string array joined
-// by ", "; else "".
+// jsonText renders fields[key] losslessly as text: a string as-is, a string
+// array joined by ", ", and any other value (number, bool, nested array/object)
+// as compact JSON. Missing keys render as "". This makes note preservation
+// lossless for the arbitrary shapes migrated cases carry.
 func jsonText(fields map[string]any, key string) string {
-	switch v := fields[key].(type) {
+	v, ok := fields[key]
+	if !ok {
+		return ""
+	}
+	switch t := v.(type) {
 	case string:
-		return v
+		return t
 	case []any:
-		items := make([]string, 0, len(v))
-		for _, it := range v {
-			if s, ok := it.(string); ok {
+		items := make([]string, 0, len(t))
+		for _, it := range t {
+			if s, isStr := it.(string); isStr {
 				items = append(items, s)
+			} else if b, err := json.Marshal(it); err == nil {
+				items = append(items, string(b))
 			}
 		}
 		return strings.Join(items, ", ")
 	default:
-		return ""
-	}
-}
-
-// jsonScalar renders a string, number, or bool field as text; else "".
-func jsonScalar(fields map[string]any, key string) string {
-	switch v := fields[key].(type) {
-	case string:
-		return v
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64)
-	case bool:
-		return strconv.FormatBool(v)
-	default:
+		if b, err := json.Marshal(t); err == nil {
+			return string(b)
+		}
 		return ""
 	}
 }

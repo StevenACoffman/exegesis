@@ -61,6 +61,14 @@ func TestMigrateTestPrompts(t *testing.T) {
 			wantExp:   []string{"x", "y"},
 			noWarn:    true,
 		},
+		"expected recovered from an expected_* variant": {
+			in: `[{"id":1,"type":"should_trigger","prompt":"p",
+				"expected_skill_elements":["uses loopback","no mock net.Conn"]}]`,
+			wantIDs:   []int{1},
+			wantTypes: []book2skill.TestType{book2skill.ShouldTrigger},
+			wantExp:   []string{"uses loopback, no mock net.Conn"},
+			noWarn:    true,
+		},
 		"unknown type is kept verbatim and warned": {
 			in:          `[{"id":1,"type":"weird","prompt":"p","expected":"e"}]`,
 			wantIDs:     []int{1},
@@ -138,6 +146,22 @@ func TestMigrateTestPromptsPreservesRationaleInNotes(t *testing.T) {
 	}
 	if !strings.Contains(notes, "source id: ms-si-01") {
 		t.Errorf("notes should preserve the non-numeric source id; got %q", notes)
+	}
+}
+
+func TestMigrateTestPromptsPreservesUnknownKeysInNotes(t *testing.T) {
+	t.Parallel()
+	got, _, err := book2skill.MigrateTestPrompts([]byte(
+		`[{"id":"tp01","type":"should_trigger","prompt":"p","expected":"e",
+			"segment":"A2","should_not":false,"tags":["a","b"]}]`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	notes := got[0].Notes
+	for _, want := range []string{"segment: A2", "should_not: false", "tags: a, b", "source id: tp01"} {
+		if !strings.Contains(notes, want) {
+			t.Errorf("notes should preserve %q; got %q", want, notes)
+		}
 	}
 }
 
