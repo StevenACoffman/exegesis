@@ -13,7 +13,7 @@ import (
 // encoder is read-only and shared. A one-time, never-reset cache is the intended
 // use of a package-level value here.
 //
-//nolint:gochecknoglobals // one-time read-only encoder; tiktoken init is process-global and must run once
+//nolint:gochecknoglobals // read-only encoder; tiktoken init must run once, process-wide
 var cachedCounter = sync.OnceValues(buildTokenCounter)
 
 // TokenCounter estimates the token count of a text. It is injected into the

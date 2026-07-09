@@ -172,16 +172,18 @@ func filesUnder(dir string, exclude []string) []string {
 	return out
 }
 
-// walkSkillFiles invokes fn for each regular file beneath root, pruning
-// version-control directories (.git/.hg/.svn), directories and files whose base
-// name matches an exclude glob, and silently skipping unreadable entries.
+// walkSkillFiles invokes fn for each regular file beneath root, pruning hidden
+// directories (any whose base name starts with ".", covering .git/.hg/.svn and
+// tool caches like .rumdl_cache), directories and files whose base name matches
+// an exclude glob, and silently skipping unreadable entries. Hidden FILES are
+// not pruned, so secret files such as .env still reach fn.
 func walkSkillFiles(root string, exclude []string, fn func(path string)) {
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil //nolint:nilerr // unreadable entries are skipped, not fatal
 		}
 		if d.IsDir() {
-			if isVCSDir(d.Name()) || matchesAnyGlob(d.Name(), exclude) {
+			if path != root && (isHiddenDir(d.Name()) || matchesAnyGlob(d.Name(), exclude)) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -193,13 +195,8 @@ func walkSkillFiles(root string, exclude []string, fn func(path string)) {
 	})
 }
 
-func isVCSDir(name string) bool {
-	switch name {
-	case ".git", ".hg", ".svn":
-		return true
-	default:
-		return false
-	}
+func isHiddenDir(name string) bool {
+	return strings.HasPrefix(name, ".")
 }
 
 // matchesAnyGlob reports whether name matches any of the shell-style globs. An
@@ -273,9 +270,17 @@ func secretContentREs() []*regexp.Regexp {
 	}
 }
 
+// reUseWhen matches language indicating WHEN a skill applies. A bare "when" or
+// "whenever" counts (it subsumes "use when", "when you need", "invoke … when",
+// "when you encounter …"); "trigger" catches explicit "Trigger:" labels and
+// "the trigger signal is …"; "after"/"before" catch temporal triggers like
+// "use this skill after an incident" and "invoke after a gap is located". The
+// remaining alternatives cover descriptions that state applicability without any
+// of those words. This is an advisory warning, so erring toward a false pass (a
+// topical "when"/"after") beats falsely flagging a clear trigger clause.
 func reUseWhen() *regexp.Regexp {
-	return regexp.MustCompile(`(?i)\b(use when|use for|use if|use this|when you need|` +
-		`invoke when|trigger when|designed for|required for|needed for)\b`)
+	return regexp.MustCompile(`(?i)\b(when|whenever|after|before|trigger|use for|use to|` +
+		`use if|designed for|required for|needed for|applies to|for use in)\b`)
 }
 
 func reUserCentric() *regexp.Regexp {

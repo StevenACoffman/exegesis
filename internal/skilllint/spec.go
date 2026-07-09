@@ -218,7 +218,7 @@ func checkAllowedTools(s *Skill) []Diagnostic {
 			}
 		}
 	case string:
-		names = strings.Fields(val)
+		names = splitToolList(val)
 	default:
 		diags = append(diags, diag(LevelError, "1c.allowed-tools.type",
 			"field 'allowed-tools' must be a string or list", s.SkillMDPath))
@@ -236,10 +236,18 @@ func checkAllowedTools(s *Skill) []Diagnostic {
 	return diags
 }
 
+// splitToolList tokenizes an allowed-tools string, accepting both the base-spec
+// space-delimited form and the comma-separated form Claude Code writes in
+// practice (e.g. "Bash, Read, Edit"). Splitting on whitespace alone would leave
+// trailing commas glued to tool names and mis-report them as unknown.
+func splitToolList(s string) []string {
+	return strings.Fields(strings.ReplaceAll(s, ",", " "))
+}
+
 func checkUnknownFields(s *Skill, extensionFields map[string]bool) []Diagnostic {
 	var diags []Diagnostic
 	for _, key := range s.FrontmatterKeys {
-		if isBaseSpecField(key) || extensionFields[key] {
+		if isBaseSpecField(key) || isConventionalField(key) || extensionFields[key] {
 			continue
 		}
 		diags = append(diags, diag(LevelInfo, "1d.unknown-field",
@@ -315,6 +323,20 @@ func nameRE() *regexp.Regexp {
 func isBaseSpecField(key string) bool {
 	switch key {
 	case "name", "description", "license", "compatibility", "metadata", "allowed-tools":
+		return true
+	default:
+		return false
+	}
+}
+
+// isConventionalField reports whether key is a widely-used optional frontmatter
+// field that, while not in the agentskills.io base spec, is common enough across
+// Claude skills that flagging it as unknown is noise. These mirror the keys the
+// redlines allow-list accepts (see isRedlineAllowedKey in redlines.go); keep
+// the two in sync.
+func isConventionalField(key string) bool {
+	switch key {
+	case "tags", "author", "version":
 		return true
 	default:
 		return false

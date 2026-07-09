@@ -92,6 +92,57 @@ func TestCheckQualityExcludePrunes(t *testing.T) {
 	}
 }
 
+func TestCheckQualityWhenClauseNotFlagged(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "invoker")
+	writeSkill(t, dir, "---\nname: invoker\ndescription: Invoke this skill when you "+
+		"encounter an architecture review that ignores business trade-offs.\n---\n# H\ntext\n")
+	ids := checkIDs(skilllint.CheckQuality(skilllint.Parse(dir), nil))
+	if ids["2a.description.no-when"] {
+		t.Errorf("a clear 'when you encounter' trigger clause should not fire no-when; got %v",
+			keysOf(ids))
+	}
+}
+
+func TestCheckQualityTriggerLabelNotFlagged(t *testing.T) {
+	t.Parallel()
+	for name, desc := range map[string]string{
+		"trigger-label": "Trigger: user is designing configuration for a struct constructor " +
+			"and wondering which pattern to use.",
+		"temporal-after": "Use this skill after any significant incident to convert the " +
+			"event into organizational learning.",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := filepath.Join(t.TempDir(), name)
+			writeSkill(t, dir, "---\nname: "+name+"\ndescription: "+desc+"\n---\n# H\ntext\n")
+			ids := checkIDs(skilllint.CheckQuality(skilllint.Parse(dir), nil))
+			if ids["2a.description.no-when"] {
+				t.Errorf("%s indicates when-to-use; should not fire no-when; got %v", name,
+					keysOf(ids))
+			}
+		})
+	}
+}
+
+func TestCheckQualityHiddenDirPruned(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "cached")
+	writeSkill(t, dir, "---\nname: cached\ndescription: Use when you need to test that "+
+		"hidden cache directories are pruned from the walk.\n---\n# H\ntext\n")
+	// A tool cache the formatter left behind; its binary must not be flagged.
+	mustWrite(t, filepath.Join(dir, ".rumdl_cache", "workspace_index.bin"), "\x00\x01binary")
+	// A hidden FILE at the root must still be reachable (secrets stay flagged).
+	mustWrite(t, filepath.Join(dir, ".env"), "SECRET=1")
+	ids := checkIDs(skilllint.CheckQuality(skilllint.Parse(dir), nil))
+	if ids["2b.binary"] {
+		t.Errorf("binary inside a hidden cache dir should be pruned; got %v", keysOf(ids))
+	}
+	if !ids["2b.secrets.filename"] {
+		t.Errorf("hidden files (.env) should still be walked and flagged; got %v", keysOf(ids))
+	}
+}
+
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {

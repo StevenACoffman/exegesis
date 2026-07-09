@@ -36,6 +36,16 @@ func TestCheckSpec(t *testing.T) {
 			frontmatter: "name: s\ndescription: Use when you need something here now.\nbogus: 1",
 			wantIDs:     []string{"1d.unknown-field"},
 		},
+		"comma-separated allowed-tools": {
+			frontmatter: "name: s\ndescription: Use when you need something here now.\n" +
+				"allowed-tools: Bash, Read, Edit",
+			absentIDs: []string{"1c.allowed-tools.unknown-tool"},
+		},
+		"conventional fields not flagged": {
+			frontmatter: "name: s\ndescription: Use when you need something here now.\n" +
+				"tags: [a, b]\nauthor: someone\nversion: \"1.0\"",
+			absentIDs: []string{"1d.unknown-field"},
+		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
