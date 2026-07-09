@@ -163,6 +163,49 @@ func TestTestsMergeRejectsThreeCategorySet(t *testing.T) {
 	}
 }
 
+func TestTestsMigrateWrapperToCanonical(t *testing.T) {
+	t.Parallel()
+	skillDir := t.TempDir()
+	// Object-wrapper shape with expected_behavior and string ids, sized to pass.
+	writeFile(t, filepath.Join(skillDir, "test-prompts.json"), `{"skill":"x","version":"1",
+		"test_cases":[
+			{"id":"st-1","type":"should_trigger","prompt":"a","expected_behavior":"fires"},
+			{"id":"st-2","type":"should_trigger","prompt":"b","expected_behavior":"fires"},
+			{"id":"st-3","type":"should_trigger","prompt":"c","expected_behavior":"fires"},
+			{"id":"snt-1","type":"should_not_trigger","prompt":"d","expected_behavior":"quiet"},
+			{"id":"snt-2","type":"should_not_trigger","prompt":"e","expected_behavior":"quiet"},
+			{"id":"ec-1","type":"edge_case","prompt":"f","expected_behavior":"either"}]}`)
+
+	stdout, _, err := runCapture(t, "tests", "--migrate", skillDir)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if !strings.Contains(stdout, "migrated") || !strings.Contains(stdout, "gate: PASS") {
+		t.Errorf("expected migrated + PASS, got:\n%s", stdout)
+	}
+	// The rewritten file must now decode with the strict parser, with int ids.
+	cases, decErr := book2skill.DecodeTestPrompts(
+		[]byte(readFile(t, filepath.Join(skillDir, "test-prompts.json"))))
+	if decErr != nil {
+		t.Fatalf("migrated file must decode: %v", decErr)
+	}
+	if len(cases) != 6 || cases[0].ID != 1 || cases[5].ID != 6 {
+		t.Errorf("want 6 cases renumbered 1..6, got %d (first=%d last=%d)",
+			len(cases), cases[0].ID, cases[len(cases)-1].ID)
+	}
+}
+
+func TestTestsMigrateReportsMissingExpected(t *testing.T) {
+	t.Parallel()
+	skillDir := t.TempDir()
+	writeFile(t, filepath.Join(skillDir, "test-prompts.json"),
+		`{"prompts":[{"id":"a","type":"should_invoke","prompt":"p","rationale":"why"}]}`)
+	_, stderr, _ := runCapture(t, "tests", "--migrate", skillDir)
+	if !strings.Contains(stderr, "no expected") {
+		t.Errorf("expected a 'no expected' warning on stderr, got:\n%s", stderr)
+	}
+}
+
 func TestMergeStatusAppendThenCheck(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -578,6 +621,15 @@ func run(t *testing.T, args ...string) (stdout string, err error) {
 	var out bytes.Buffer
 	err = cmd.Run(context.Background(), args, strings.NewReader(""), &out, io.Discard)
 	return out.String(), err
+}
+
+// runCapture is run but also returns captured stderr, for commands that emit
+// advisory diagnostics there.
+func runCapture(t *testing.T, args ...string) (stdout, stderr string, err error) {
+	t.Helper()
+	var out, errBuf bytes.Buffer
+	err = cmd.Run(context.Background(), args, strings.NewReader(""), &out, &errBuf)
+	return out.String(), errBuf.String(), err
 }
 
 // assertExit1 asserts err is a root.ExitError(1) — the failure code every gate

@@ -30,6 +30,7 @@ type Config struct {
 	Format   string
 	Scaffold bool
 	Fix      bool
+	Migrate  bool
 	Merge    bool
 	Flags    *ff.FlagSet
 	Command  *ff.Command
@@ -44,6 +45,9 @@ func New(parent *root.Config) *Config {
 	cfg.Flags.BoolVar(&cfg.Scaffold, 0, "scaffold",
 		"write a template test-prompts.json when none exists")
 	cfg.Flags.BoolVar(&cfg.Fix, 0, "fix", "rewrite test-prompts.json in canonical form")
+	cfg.Flags.BoolVar(&cfg.Migrate, 0, "migrate",
+		"adopt a foreign test-prompts.json into canonical darwin form "+
+			"(unwrap, rename, renumber); reports cases still needing an expected")
 	cfg.Flags.BoolVar(&cfg.Merge, 0, "merge",
 		"use the merge-skills gate (adds prefer_merged_over_source; edge_case≥2)")
 	cfg.Command = &ff.Command{
@@ -53,9 +57,12 @@ func New(parent *root.Config) *Config {
 		LongHelp: `Validate <skill-dir>/test-prompts.json against the structural
 Phase-4 gate (at least 3 should_trigger, 2 should_not_trigger, and 1 edge_case),
 then print the darwin-skill handoff. --scaffold writes a template when none
-exists; --fix rewrites an existing file in canonical form. --merge applies the
-merge-skills gate (also requires prefer_merged_over_source and edge_case≥2).
-Exit code is 1 when the gate fails.`,
+exists; --fix rewrites an existing file in canonical form; --migrate adopts a
+foreign shape (object wrapper, prompts/test_prompts key, or category-grouped
+arrays) into that canonical form, renaming expected_behavior, mapping type
+synonyms, and renumbering ids — reporting any case still needing an expected.
+--merge applies the merge-skills gate (also requires prefer_merged_over_source
+and edge_case≥2). Exit code is 1 when the gate fails.`,
 		Flags: cfg.Flags,
 		Exec:  cfg.exec,
 	}
@@ -71,10 +78,14 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 		return einval("tests: unknown --format " + cfg.Format)
 	}
 	path := filepath.Join(args[0], testPromptsFile)
-	if cfg.Scaffold {
+	switch {
+	case cfg.Scaffold:
 		return cfg.scaffold(path)
+	case cfg.Migrate:
+		return cfg.migrate(args[0], path)
+	default:
+		return cfg.validate(args[0], path)
 	}
-	return cfg.validate(args[0], path)
 }
 
 func (cfg *Config) scaffold(path string) error {
@@ -106,6 +117,34 @@ func (cfg *Config) validate(dir, path string) error {
 			return err
 		}
 	}
+	return cfg.gate(dir, cases)
+}
+
+// migrate adopts a foreign test-prompts.json into canonical form, writes it
+// back, surfaces the cases still needing author attention, then runs the gate.
+// It bypasses the strict decoder that validate uses, which these shapes fail.
+func (cfg *Config) migrate(dir, path string) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return einval("tests: cannot read " + path + " (use --scaffold to create it)")
+	}
+	cases, warnings, err := book2skill.MigrateTestPrompts(raw)
+	if err != nil {
+		return fmt.Errorf("tests: %w", err)
+	}
+	if err := writeCanonical(path, cases); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "migrated %s (%d cases)\n", path, len(cases))
+	for _, w := range warnings {
+		_, _ = fmt.Fprintln(cfg.Stderr, "  ! "+w)
+	}
+	return cfg.gate(dir, cases)
+}
+
+// gate validates cases against the (merge or standard) Phase-4 composition,
+// reports the result, and exits 1 when the gate fails.
+func (cfg *Config) gate(dir string, cases []book2skill.TestCase) error {
 	problems := book2skill.ValidateTestSet(cases)
 	if cfg.Merge {
 		problems = book2skill.ValidateMergedTestSet(cases)

@@ -1,0 +1,259 @@
+package book2skill
+
+import (
+	"encoding/json"
+	"strconv"
+	"strings"
+)
+
+// rawCase is one decoded test case before normalization: its arbitrary JSON
+// fields, plus the type implied by a category-grouped array it came from ("" if
+// it came from a flat list, where the type is read from the fields instead).
+type rawCase struct {
+	fields    map[string]any
+	groupType TestType
+}
+
+// MigrateTestPrompts adapts a foreign test-prompts.json into the canonical
+// darwin-shaped cases that EncodeTestPrompts produces and DecodeTestPrompts
+// re-parses. It unwraps the common wrapper shapes (a top-level array, or an
+// object keyed by test_cases/prompts/test_prompts/tests, or category-grouped
+// should_trigger/should_not_trigger/edge_cases arrays), maps type/category
+// synonyms to the canonical set, renames expected_behavior to expected, and
+// renumbers ids sequentially.
+//
+// It never fabricates a positive test's expected behavior: when a case has no
+// expected field it is defaulted only for should_not_trigger (where "skill
+// should not activate" is always correct) and otherwise left empty with a
+// warning. Every gap that needs an author's attention — a missing prompt or
+// expected, an unrecognized type — is returned as a warning rather than guessed.
+func MigrateTestPrompts(raw []byte) ([]TestCase, []string, error) {
+	var top any
+	if err := json.Unmarshal(raw, &top); err != nil {
+		return nil, nil, &Error{Code: EINVALID, Message: "test-prompts.json is not valid JSON"}
+	}
+	rawCases := locateCases(top)
+	if len(rawCases) == 0 {
+		return nil, nil, &Error{
+			Code:    EINVALID,
+			Message: "could not locate a test-case array in test-prompts.json",
+		}
+	}
+	cases := make([]TestCase, 0, len(rawCases))
+	var warnings []string
+	for i := range rawCases {
+		testCase, warns := normalizeCase(&rawCases[i], i+1)
+		cases = append(cases, testCase)
+		warnings = append(warnings, warns...)
+	}
+	return cases, warnings, nil
+}
+
+// locateCases finds the array of cases within any of the observed layouts.
+func locateCases(top any) []rawCase {
+	switch v := top.(type) {
+	case []any:
+		return wrapCases(v, "")
+	case map[string]any:
+		for _, key := range []string{"test_cases", "prompts", "test_prompts", "tests"} {
+			switch inner := v[key].(type) {
+			case []any:
+				return wrapCases(inner, "")
+			case map[string]any:
+				return groupedCases(inner)
+			}
+		}
+		return groupedCases(v)
+	default:
+		return nil
+	}
+}
+
+// groupedCases collects cases from the category-grouped layout, tagging each
+// with the type its array name implies.
+func groupedCases(m map[string]any) []rawCase {
+	groups := []struct {
+		key string
+		typ TestType
+	}{
+		{"should_trigger", ShouldTrigger},
+		{"should_not_trigger", ShouldNotTrigger},
+		{"edge_cases", EdgeCase},
+		{"edge_case", EdgeCase},
+	}
+	var out []rawCase
+	for _, g := range groups {
+		if arr, ok := m[g.key].([]any); ok {
+			out = append(out, wrapCases(arr, g.typ)...)
+		}
+	}
+	return out
+}
+
+// wrapCases keeps only the object elements of arr, tagging each with group.
+func wrapCases(arr []any, group TestType) []rawCase {
+	out := make([]rawCase, 0, len(arr))
+	for _, item := range arr {
+		if m, ok := item.(map[string]any); ok {
+			out = append(out, rawCase{fields: m, groupType: group})
+		}
+	}
+	return out
+}
+
+// normalizeCase maps one raw case to a canonical TestCase with the given id,
+// returning any gaps that need an author's attention.
+func normalizeCase(rc *rawCase, id int) (TestCase, []string) {
+	prefix := "case " + strconv.Itoa(id) + ": "
+	var warnings []string
+	prompt := jsonString(rc.fields, "prompt")
+	if prompt == "" {
+		warnings = append(warnings, prefix+"missing prompt")
+	}
+	typ, typeWarn := deriveType(rc, prefix)
+	if typeWarn != "" {
+		warnings = append(warnings, typeWarn)
+	}
+	expected, expWarn := deriveExpected(rc.fields, typ, prefix)
+	if expWarn != "" {
+		warnings = append(warnings, expWarn)
+	}
+	return TestCase{
+		ID:       id,
+		Type:     typ,
+		Prompt:   prompt,
+		Expected: expected,
+		Notes:    deriveNotes(rc.fields),
+	}, warnings
+}
+
+// deriveType resolves the canonical type from the group hint or the type/
+// category field, warning when it cannot be classified.
+func deriveType(rc *rawCase, prefix string) (TestType, string) {
+	if rc.groupType != "" {
+		return rc.groupType, ""
+	}
+	raw := jsonString(rc.fields, "type")
+	if raw == "" {
+		raw = jsonString(rc.fields, "category")
+	}
+	typ := normalizeTestType(raw)
+	switch {
+	case typ.Valid():
+		return typ, ""
+	case raw == "":
+		return typ, prefix + "no type/category — cannot classify"
+	default:
+		return typ, prefix + "unknown type " + strconv.Quote(raw) + " — left as-is"
+	}
+}
+
+// normalizeTestType maps the type/category vocabularies seen in the wild onto
+// the canonical TestType set. Unrecognized values are returned verbatim (and
+// reported by the caller) rather than silently reclassified.
+func normalizeTestType(raw string) TestType {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "should_trigger", "should-trigger", "trigger", "should_invoke", "invoke":
+		return ShouldTrigger
+	case "should_not_trigger", "should-not-trigger", "should_not_invoke", "decoy":
+		return ShouldNotTrigger
+	case "edge_case", "edge-case", "edge", "blurred_boundary", "boundary":
+		return EdgeCase
+	case "prefer_merged_over_source", "prefer_merged":
+		return PreferMergedOverSource
+	default:
+		return TestType(raw)
+	}
+}
+
+// deriveExpected resolves the expected behavior, defaulting only the case where
+// it is provably correct (should_not_trigger) and warning otherwise.
+func deriveExpected(fields map[string]any, typ TestType, prefix string) (string, string) {
+	if e := jsonString(fields, "expected"); e != "" {
+		return e, ""
+	}
+	if e := jsonString(fields, "expected_behavior"); e != "" {
+		return e, ""
+	}
+	if typ == ShouldNotTrigger {
+		return "skill should not activate", ""
+	}
+	return "", prefix + "no expected — author must supply"
+}
+
+// deriveNotes preserves the descriptive fields that neither darwin nor the gate
+// reads (rationale, must_include/exclude, a non-numeric source id) so migration
+// loses no authoring intent, without passing any of it off as the expectation.
+func deriveNotes(fields map[string]any) string {
+	var parts []string
+	if n := jsonText(fields, "notes"); n != "" {
+		parts = append(parts, n)
+	}
+	if r := jsonText(fields, "rationale"); r != "" {
+		parts = append(parts, "rationale: "+r)
+	}
+	if inc := jsonText(fields, "must_include"); inc != "" {
+		parts = append(parts, "must include: "+inc)
+	}
+	if exc := jsonText(fields, "must_not_include"); exc != "" {
+		parts = append(parts, "must not include: "+exc)
+	}
+	if oid := jsonScalar(fields, "id"); oid != "" && !isIntString(oid) {
+		parts = append(parts, "source id: "+oid)
+	}
+	return strings.Join(parts, "; ")
+}
+
+// jsonString returns fields[key] when it is a string, else "".
+func jsonString(fields map[string]any, key string) string {
+	if v, ok := fields[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// jsonText returns fields[key] as text: a string as-is, or a string array joined
+// by ", "; else "".
+func jsonText(fields map[string]any, key string) string {
+	switch v := fields[key].(type) {
+	case string:
+		return v
+	case []any:
+		items := make([]string, 0, len(v))
+		for _, it := range v {
+			if s, ok := it.(string); ok {
+				items = append(items, s)
+			}
+		}
+		return strings.Join(items, ", ")
+	default:
+		return ""
+	}
+}
+
+// jsonScalar renders a string, number, or bool field as text; else "".
+func jsonScalar(fields map[string]any, key string) string {
+	switch v := fields[key].(type) {
+	case string:
+		return v
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(v)
+	default:
+		return ""
+	}
+}
+
+// isIntString reports whether s is a non-empty run of ASCII digits.
+func isIntString(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
