@@ -163,13 +163,11 @@ func updateFrontmatterName(skillMD, newName string) (bool, error) {
 		return false, &book2skill.Error{Op: "skilllint.updateFrontmatterName", Err: err}
 	}
 	lines := strings.Split(string(data), "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+	end, ok := frontmatterEnd(lines)
+	if !ok {
 		return false, nil
 	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			return false, nil
-		}
+	for i := 1; i < end; i++ {
 		if reNameLine().MatchString(lines[i]) {
 			lines[i] = "name: " + newName
 			if writeErr := os.WriteFile(

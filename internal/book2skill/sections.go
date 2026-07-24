@@ -39,6 +39,7 @@ func AppendCustomSections(generated, existing string) string {
 // the first level-2 heading (frontmatter, title, intro) is not a section.
 func markdownSections(md string) []mdSection {
 	lines := strings.Split(md, "\n")
+	fenced := fencedLines(md)
 	var sections []mdSection
 	start := -1
 	flush := func(end int) {
@@ -52,7 +53,7 @@ func markdownSections(md string) []mdSection {
 		sections = append(sections, mdSection{heading: heading, text: text})
 	}
 	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), headingPrefix) {
+		if !fenced[i] && strings.HasPrefix(strings.TrimSpace(line), headingPrefix) {
 			flush(i)
 			start = i
 		}

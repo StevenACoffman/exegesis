@@ -66,6 +66,7 @@ func SegmentTagFromHeading(line string) (string, bool) {
 // body with surrounding whitespace trimmed.
 func ParseSegments(md string) map[string]string {
 	segments := make(map[string]string)
+	fenced := fencedLines(md)
 	current := ""
 	var buf strings.Builder
 	flush := func() {
@@ -74,8 +75,8 @@ func ParseSegments(md string) map[string]string {
 		}
 		buf.Reset()
 	}
-	for _, line := range strings.Split(md, "\n") {
-		if tag, ok := SegmentTagFromHeading(line); ok {
+	for i, line := range strings.Split(md, "\n") {
+		if tag, ok := SegmentTagFromHeading(line); ok && !fenced[i] {
 			flush()
 			current = tag
 			continue
@@ -92,7 +93,11 @@ func ParseSegments(md string) map[string]string {
 // ParseTitle returns the text of the first level-1 heading ("# ...") in md, with
 // surrounding whitespace trimmed. It returns "" when md has no such heading.
 func ParseTitle(md string) string {
-	for _, line := range strings.Split(md, "\n") {
+	fenced := fencedLines(md)
+	for i, line := range strings.Split(md, "\n") {
+		if fenced[i] {
+			continue
+		}
 		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "# "); ok {
 			return strings.TrimSpace(rest)
 		}
@@ -131,7 +136,7 @@ func ParseRelated(fromSlug, md string) []Relationship {
 // level-2 heading or end of document, and whether the heading was found.
 func sectionBody(md, heading string) (string, bool) {
 	lines := strings.Split(md, "\n")
-	start, end, found := sectionRange(lines, heading)
+	start, end, found := sectionRange(lines, fencedLines(md), heading)
 	if !found {
 		return "", false
 	}
@@ -144,12 +149,16 @@ func sectionBody(md, heading string) (string, bool) {
 // heading-case rule produces, e.g. "## Related Skills" from "## Related skills")
 // are still found, and a decorative suffix after the heading text is tolerated
 // ("## Related Skills (Stage 3)"), matching SegmentTagFromHeading's convention.
-func sectionRange(lines []string, heading string) (start, end int, found bool) {
+func sectionRange(
+	lines []string,
+	fenced map[int]bool,
+	heading string,
+) (start, end int, found bool) {
 	want := strings.ToLower(headingPrefix + heading)
 	start = -1
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, headingPrefix) {
+		if fenced[i] || !strings.HasPrefix(trimmed, headingPrefix) {
 			continue
 		}
 		if start >= 0 {

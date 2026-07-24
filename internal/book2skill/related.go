@@ -14,7 +14,7 @@ func AppendRelated(md string, rel Relationship) (out string, changed bool) {
 	}
 	bullet := relatedBullet(rel)
 	lines := strings.Split(md, "\n")
-	start, end, found := sectionRange(lines, RelatedSkillsHeading)
+	start, end, found := sectionRange(lines, fencedLines(md), RelatedSkillsHeading)
 	if !found {
 		body := strings.TrimRight(md, "\n")
 		return body + "\n\n" + headingPrefix + RelatedSkillsHeading + "\n\n" + bullet + "\n", true

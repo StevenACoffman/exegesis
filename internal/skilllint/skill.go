@@ -65,14 +65,8 @@ func splitFrontmatter(text string) (map[string]any, []string, string, int, strin
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
 		return nil, nil, text, 0, "missing opening frontmatter delimiter (---)"
 	}
-	end := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			end = i
-			break
-		}
-	}
-	if end == -1 {
+	end, ok := frontmatterEnd(lines)
+	if !ok {
 		return nil, nil, text, 0, "missing closing frontmatter delimiter (---)"
 	}
 
@@ -82,6 +76,21 @@ func splitFrontmatter(text string) (map[string]any, []string, string, int, strin
 	}
 	bodyStart := end + 1
 	return fm, keys, strings.Join(lines[bodyStart:], "\n"), bodyStart, ""
+}
+
+// frontmatterEnd returns the index of the closing "---" delimiter for a leading
+// frontmatter block. ok is false unless the first line is "---" and a later "---"
+// line closes it.
+func frontmatterEnd(lines []string) (end int, ok bool) {
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return 0, false
+	}
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 // decodeFrontmatter decodes fmText into a mapping and its ordered keys. An empty

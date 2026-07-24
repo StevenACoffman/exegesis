@@ -77,7 +77,11 @@ func ParseOverviewHeader(md string) (title, author string) {
 		titleSuffix  = " — Book Overview"
 		authorPrefix = "- **Author:** "
 	)
-	for _, line := range strings.Split(md, "\n") {
+	fenced := fencedLines(md)
+	for i, line := range strings.Split(md, "\n") {
+		if fenced[i] {
+			continue
+		}
 		trimmed := strings.TrimSpace(line)
 		switch {
 		case title == "" && strings.HasPrefix(trimmed, "# "):

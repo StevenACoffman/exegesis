@@ -64,6 +64,27 @@ func TestParseSegments(t *testing.T) {
 	}
 }
 
+func TestParseSegmentsIgnoresFencedHeadings(t *testing.T) {
+	t.Parallel()
+	// The E (Execution) segment routinely contains code fences. A line inside a
+	// fence that happens to read like a segment heading ("## B ...") is code, not a
+	// new segment: E must keep it and B must be only the real Boundary section.
+	md := "## E — Execution\n" +
+		"```bash\n" +
+		"## B is just a shell comment\n" +
+		"echo run\n" +
+		"```\n\n" +
+		"## B — Boundary\nreal boundary\n"
+
+	got := book2skill.ParseSegments(md)
+	if !strings.Contains(got[book2skill.SegE], "## B is just a shell comment") {
+		t.Errorf("E segment lost its fenced code content:\n%q", got[book2skill.SegE])
+	}
+	if got[book2skill.SegB] != "real boundary" {
+		t.Errorf("B segment = %q, want %q", got[book2skill.SegB], "real boundary")
+	}
+}
+
 func TestParseTitle(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {

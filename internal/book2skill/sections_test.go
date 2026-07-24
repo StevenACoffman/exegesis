@@ -47,3 +47,18 @@ func TestAppendCustomSections(t *testing.T) {
 		t.Errorf("expected unchanged output when there is nothing custom")
 	}
 }
+
+func TestAppendCustomSectionsFencedHeadingNotOwned(t *testing.T) {
+	t.Parallel()
+	// A "## Setup" that appears only inside a fenced code block in the generated
+	// document is code, not an owned heading — so a genuinely custom "## Setup"
+	// section in the existing document must still be preserved.
+	generated := "# I\n\n## Skills\n\n```md\n## Setup\nexample\n```\n"
+	existing := "# I\n\n## Skills\n\n- x\n\n## Setup\n\nhand-authored setup.\n"
+
+	out := book2skill.AppendCustomSections(generated, existing)
+	if !strings.Contains(out, "hand-authored setup.") {
+		t.Errorf("real custom '## Setup' dropped because a fenced '## Setup' was "+
+			"mistaken for an owned heading:\n%s", out)
+	}
+}

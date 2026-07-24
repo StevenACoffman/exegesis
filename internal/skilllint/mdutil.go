@@ -2,7 +2,6 @@ package skilllint
 
 import (
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -16,21 +15,11 @@ type LinkFragment struct {
 	Fragment string
 }
 
-// StripCodeBlocks removes fenced and indented code blocks but leaves inline code
-// spans intact.
-func StripCodeBlocks(text string) string {
-	return stripIndentedBlocks(stripFencedBlocks(text))
-}
-
-// StripCode removes code blocks and inline code spans.
-func StripCode(text string) string {
-	return reInlineCode().ReplaceAllString(StripCodeBlocks(text), "")
-}
-
 // SlugifyHeading converts a heading to a GitHub-style anchor slug: inline code
 // and link syntax reduce to visible text, the result is lowercased, characters
 // outside word/space/hyphen are dropped, and spaces become hyphens (runs are not
-// collapsed).
+// collapsed). It is kept deliberately GitHub-compatible; goldmark's own auto-ID is
+// only approximately GitHub's algorithm, so the slug policy stays here.
 func SlugifyHeading(text string) string {
 	text = reInlineCode().ReplaceAllString(text, "$1")
 	text = reImageLink().ReplaceAllString(text, "$1")
@@ -41,14 +30,13 @@ func SlugifyHeading(text string) string {
 }
 
 // ExtractHeadings returns the set of heading slugs in text (outside code blocks),
-// suffixing duplicates GitHub-style (intro, intro-1, intro-2).
+// suffixing duplicates GitHub-style (intro, intro-1, intro-2). Heading structure
+// comes from goldmark, so a "#" inside a code fence and a list item followed by a
+// line of dashes are correctly not headings.
 func ExtractHeadings(text string) map[string]bool {
-	clean := StripCodeBlocks(text)
-	raw := orderedHeadingText(clean)
-
 	slugs := make(map[string]bool)
 	counts := make(map[string]int)
-	for _, heading := range raw {
+	for _, heading := range headingTexts(text) {
 		base := SlugifyHeading(heading)
 		if n := counts[base]; n == 0 {
 			slugs[base] = true
@@ -60,12 +48,12 @@ func ExtractHeadings(text string) map[string]bool {
 	return slugs
 }
 
-// ExtractLocalLinkTargets returns local (non-scheme, non-fragment-only) link
-// targets in text, with any query/fragment suffix stripped.
+// ExtractLocalLinkTargets returns local (non-scheme, non-fragment-only) link and
+// image targets in text, with any query/fragment suffix stripped.
 func ExtractLocalLinkTargets(text string) []string {
 	var targets []string
-	for _, m := range reMDLink().FindAllStringSubmatch(StripCode(text), -1) {
-		target := strings.TrimSpace(m[2])
+	for _, link := range mdLinks(text) {
+		target := strings.TrimSpace(link.Destination)
 		if hasNonLocalScheme(target) || strings.HasPrefix(target, "#") {
 			continue
 		}
@@ -81,11 +69,11 @@ func ExtractLocalLinkTargets(text string) []string {
 // remote schemes), as (path, fragment) pairs.
 func ExtractFragmentLinks(text string) []LinkFragment {
 	var out []LinkFragment
-	for _, m := range reMDLink().FindAllStringSubmatch(StripCode(text), -1) {
-		if strings.HasPrefix(m[0], "!") {
+	for _, link := range mdLinks(text) {
+		if link.IsImage {
 			continue
 		}
-		target := strings.TrimSpace(m[2])
+		target := strings.TrimSpace(link.Destination)
 		if strings.HasPrefix(target, "http://") ||
 			strings.HasPrefix(target, "https://") ||
 			strings.HasPrefix(target, "mailto:") ||
@@ -102,7 +90,9 @@ func ExtractFragmentLinks(text string) []LinkFragment {
 }
 
 // FindUnclosedFence returns the 1-based line number of an unclosed code fence, or
-// (0, false) when every fence is closed.
+// (0, false) when every fence is closed. Detecting an unclosed fence is a lint
+// concern a spec parser abstracts away (goldmark auto-closes at EOF), so this stays
+// a direct line scan.
 func FindUnclosedFence(text string) (int, bool) {
 	inFence := false
 	fenceChar := byte(0)
@@ -119,83 +109,6 @@ func FindUnclosedFence(text string) (int, bool) {
 		}
 	}
 	return fenceLine, inFence
-}
-
-func orderedHeadingText(clean string) []string {
-	type positioned struct {
-		pos  int
-		text string
-	}
-	var items []positioned
-	for _, m := range reATXHeading().FindAllStringSubmatchIndex(clean, -1) {
-		items = append(items, positioned{pos: m[0], text: clean[m[4]:m[5]]})
-	}
-	for _, re := range []*regexp.Regexp{reSetextH1(), reSetextH2()} {
-		for _, m := range re.FindAllStringSubmatchIndex(clean, -1) {
-			line := strings.TrimSpace(clean[m[2]:m[3]])
-			if !strings.HasPrefix(line, "#") {
-				items = append(items, positioned{pos: m[0], text: line})
-			}
-		}
-	}
-	sort.SliceStable(items, func(i, j int) bool { return items[i].pos < items[j].pos })
-
-	out := make([]string, len(items))
-	for i, it := range items {
-		out[i] = it.text
-	}
-	return out
-}
-
-func stripFencedBlocks(text string) string {
-	var out []string
-	inFence := false
-	marker := ""
-	for _, line := range strings.Split(text, "\n") {
-		if inFence {
-			if strings.TrimSpace(line) == marker {
-				inFence = false
-			}
-			continue
-		}
-		if m := reFenceOpen().FindStringSubmatch(line); m != nil {
-			inFence = true
-			marker = m[1]
-			continue
-		}
-		out = append(out, line)
-	}
-	return strings.Join(out, "\n")
-}
-
-func stripIndentedBlocks(text string) string {
-	var out []string
-	prevBlank := true
-	for _, line := range strings.Split(text, "\n") {
-		indented := strings.HasPrefix(line, "    ") || strings.HasPrefix(line, "\t")
-		blank := strings.TrimSpace(line) == ""
-		if indented && droppableIndent(out, prevBlank, blank) {
-			prevBlank = false
-			continue
-		}
-		out = append(out, line)
-		prevBlank = blank
-	}
-	return strings.Join(out, "\n")
-}
-
-// droppableIndent reports whether an indented line should be treated as code and
-// dropped, given the previous line's blankness and the lines kept so far.
-func droppableIndent(kept []string, prevBlank, blank bool) bool {
-	if prevBlank && !blank {
-		return true
-	}
-	if prevBlank || len(kept) == 0 {
-		return false
-	}
-	last := kept[len(kept)-1]
-	return strings.TrimSpace(last) == "" ||
-		strings.HasPrefix(last, "    ") || strings.HasPrefix(last, "\t")
 }
 
 func fencePrefix(line string) (byte, int) {
@@ -234,12 +147,7 @@ func trimAfter(s string, sep byte) string {
 	return s
 }
 
-func reMDLink() *regexp.Regexp     { return regexp.MustCompile(`!?\[([^\]]*)\]\(([^)]+)\)`) }
 func reInlineCode() *regexp.Regexp { return regexp.MustCompile("`([^`]+)`") }
 func reImageLink() *regexp.Regexp  { return regexp.MustCompile(`!\[([^\]]*)\]\([^)]+\)`) }
 func reLink() *regexp.Regexp       { return regexp.MustCompile(`\[([^\]]*)\]\([^)]+\)`) }
 func reNonSlug() *regexp.Regexp    { return regexp.MustCompile(`[^\p{L}\p{N}_\- ]`) }
-func reFenceOpen() *regexp.Regexp  { return regexp.MustCompile("^(`{3,}|~{3,})") }
-func reATXHeading() *regexp.Regexp { return regexp.MustCompile(`(?m)^(#{1,6})\s+(.+?)(?:\s+#*)?$`) }
-func reSetextH1() *regexp.Regexp   { return regexp.MustCompile(`(?m)^(.+)\n=+\s*$`) }
-func reSetextH2() *regexp.Regexp   { return regexp.MustCompile(`(?m)^(.+)\n-+\s*$`) }

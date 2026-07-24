@@ -48,6 +48,36 @@ func TestExtractHeadingsIgnoresCodeBlocks(t *testing.T) {
 	}
 }
 
+func TestExtractHeadingsSetextDisambiguation(t *testing.T) {
+	t.Parallel()
+	// A genuine Setext H2 (paragraph line immediately over dashes) is a heading.
+	// A list item over a line of dashes is NOT: the dashes are a thematic break,
+	// which the old regex mistook for a Setext underline, minting a phantom
+	// "#item-one" anchor that made broken fragment links falsely pass.
+	md := "Real Title\n---\n\n- item one\n----\n\n## Actual\n"
+	got := skilllint.ExtractHeadings(md)
+	if !got["real-title"] {
+		t.Errorf("genuine Setext H2 missing; got %v", got)
+	}
+	if !got["actual"] {
+		t.Errorf("ATX heading missing; got %v", got)
+	}
+	if got["item-one"] {
+		t.Errorf("list item over dashes must not be a heading; got %v", got)
+	}
+}
+
+func TestExtractLinksNestedBrackets(t *testing.T) {
+	t.Parallel()
+	// A link label containing brackets — the old `\[([^\]]*)\]` regex stops at the
+	// first "]" and mis-parses the destination.
+	md := "See [a [b] c](references/g.md) for details.\n"
+	targets := skilllint.ExtractLocalLinkTargets(md)
+	if len(targets) != 1 || targets[0] != "references/g.md" {
+		t.Errorf("nested-bracket link target = %v, want [references/g.md]", targets)
+	}
+}
+
 func TestExtractLinks(t *testing.T) {
 	t.Parallel()
 	md := "See [guide](references/guide.md) and [ext](https://x) and [frag](#section) " +
