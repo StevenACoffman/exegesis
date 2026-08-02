@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/StevenACoffman/exegesis/internal/lint"
-	"github.com/StevenACoffman/exegesis/internal/skill"
+	"github.com/StevenACoffman/skillet/skill"
 )
 
 func TestCheckClean(t *testing.T) {

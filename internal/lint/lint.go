@@ -11,8 +11,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/StevenACoffman/exegesis/internal/neutrality"
-	"github.com/StevenACoffman/exegesis/internal/skill"
+	"github.com/StevenACoffman/skillet/neutrality"
+	"github.com/StevenACoffman/skillet/skill"
 )
 
 // descCharLimit is the Agent Skills description length cap.

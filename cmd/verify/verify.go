@@ -13,11 +13,11 @@ import (
 
 	"github.com/StevenACoffman/exegesis/cmd/root"
 	lintlib "github.com/StevenACoffman/exegesis/internal/lint"
-	"github.com/StevenACoffman/exegesis/internal/manifest"
 	"github.com/StevenACoffman/exegesis/internal/overview"
 	"github.com/StevenACoffman/exegesis/internal/registry"
-	"github.com/StevenACoffman/exegesis/internal/skill"
-	"github.com/StevenACoffman/exegesis/internal/testprompts"
+	"github.com/StevenACoffman/skillet/manifest"
+	"github.com/StevenACoffman/skillet/skill"
+	"github.com/StevenACoffman/skillet/testprompts"
 )
 
 // Config holds the verify command configuration.
@@ -177,7 +177,7 @@ func verifySkills(tree string, opts lintlib.Options) ([]skillReport, error) {
 func verifyOne(dir string, opts lintlib.Options) skillReport {
 	r := skillReport{dir: dir, slug: filepath.Base(dir)}
 	if s, err := skill.Load(dir); err == nil {
-		r.hash = skill.Hash(s.Raw)
+		r.hash = s.Hash()
 		r.findings = lintlib.Check(s, opts)
 	} else {
 		r.findings = []lintlib.Finding{{Severity: lintlib.Error, Message: err.Error()}}
@@ -203,7 +203,7 @@ func (cfg *Config) writeManifest(tree string, reports []skillReport, verified bo
 		}
 		entries = append(entries, e)
 	}
-	b, err := manifest.Build(tree, entries, verified).Marshal()
+	b, err := manifest.Build("exegesis", tree, entries, verified).Marshal()
 	if err != nil {
 		return fmt.Errorf("build manifest: %w", err)
 	}

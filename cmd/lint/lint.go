@@ -13,7 +13,7 @@ import (
 	"github.com/StevenACoffman/exegesis/cmd/root"
 	lintlib "github.com/StevenACoffman/exegesis/internal/lint"
 	"github.com/StevenACoffman/exegesis/internal/registry"
-	"github.com/StevenACoffman/exegesis/internal/skill"
+	"github.com/StevenACoffman/skillet/skill"
 )
 
 // Config holds the lint command configuration.

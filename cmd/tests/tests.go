@@ -12,7 +12,7 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/exegesis/cmd/root"
-	"github.com/StevenACoffman/exegesis/internal/testprompts"
+	"github.com/StevenACoffman/skillet/testprompts"
 )
 
 // Config holds the tests command configuration.
