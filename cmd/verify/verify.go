@@ -15,6 +15,7 @@ import (
 	lintlib "github.com/StevenACoffman/exegesis/internal/lint"
 	"github.com/StevenACoffman/exegesis/internal/overview"
 	"github.com/StevenACoffman/exegesis/internal/registry"
+	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/manifest"
 	"github.com/StevenACoffman/skillet/skill"
 	"github.com/StevenACoffman/skillet/testprompts"
@@ -34,7 +35,7 @@ type skillReport struct {
 	dir      string
 	slug     string
 	hash     string
-	findings []lintlib.Finding
+	findings []finding.Diagnostic
 	problems []string // test-prompts problems (incl. "missing test-prompts.json")
 	hasTests bool
 }
@@ -180,7 +181,7 @@ func verifyOne(dir string, opts lintlib.Options) skillReport {
 		r.hash = s.Hash()
 		r.findings = lintlib.Check(s, opts)
 	} else {
-		r.findings = []lintlib.Finding{{Severity: lintlib.Error, Message: err.Error()}}
+		r.findings = []finding.Diagnostic{{Severity: finding.SeverityError, Message: err.Error()}}
 	}
 	tpPath := filepath.Join(dir, "test-prompts.json")
 	f, err := testprompts.Load(tpPath)
@@ -251,7 +252,7 @@ func allPass(reports []skillReport) bool {
 
 func skillPasses(r *skillReport) bool {
 	for _, f := range r.findings {
-		if f.Severity == lintlib.Error {
+		if f.Severity == finding.SeverityError {
 			return false
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/StevenACoffman/exegesis/internal/lint"
+	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/skill"
 )
 
@@ -168,7 +169,7 @@ func TestCheckIgnoresLinksInsideCodeFences(t *testing.T) {
 	}
 }
 
-func hasFinding(fs []lint.Finding, sub string) bool {
+func hasFinding(fs []finding.Diagnostic, sub string) bool {
 	for _, f := range fs {
 		if strings.Contains(f.Message, sub) {
 			return true

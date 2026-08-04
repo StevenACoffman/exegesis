@@ -13,6 +13,7 @@ import (
 	"github.com/StevenACoffman/exegesis/cmd/root"
 	lintlib "github.com/StevenACoffman/exegesis/internal/lint"
 	"github.com/StevenACoffman/exegesis/internal/registry"
+	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/skill"
 )
 
@@ -29,8 +30,8 @@ type Config struct {
 
 // result is one skill's findings, used for JSON output.
 type result struct {
-	Skill    string            `json:"skill"`
-	Findings []lintlib.Finding `json:"findings"`
+	Skill    string               `json:"skill"`
+	Findings []finding.Diagnostic `json:"findings"`
 }
 
 // New creates and registers the lint command.
@@ -133,7 +134,7 @@ func (cfg *Config) render(results []result) error {
 func anyError(results []result) bool {
 	for _, r := range results {
 		for _, f := range r.Findings {
-			if f.Severity == lintlib.Error {
+			if f.Severity == finding.SeverityError {
 				return true
 			}
 		}

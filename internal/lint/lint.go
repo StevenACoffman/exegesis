@@ -1,7 +1,10 @@
 // Package lint validates a single Agent Skill against the agentskills.io spec
 // plus book2skill's body red-lines and the runtime-neutrality gate (E3). Check
 // is pure over an already-loaded skill; the caller does the file I/O and decides
-// the exit code from the returned findings.
+// the exit code from the returned diagnostics. The agentskills.io frontmatter
+// rules live in skillet's speclint so exegesis and skillsaw share one source of
+// truth; the checks below are exegesis-specific (folder match, body red-lines,
+// runtime neutrality, opt-in budgets).
 package lint
 
 import (
@@ -9,35 +12,17 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"unicode/utf8"
 
+	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/neutrality"
 	"github.com/StevenACoffman/skillet/skill"
-)
-
-// descCharLimit is the Agent Skills description length cap.
-const descCharLimit = 1024
-
-// Severity levels. Only Error findings fail the gate.
-const (
-	Error Severity = "error"
-	Warn  Severity = "warn"
+	"github.com/StevenACoffman/skillet/speclint"
 )
 
 var (
 	reFence      = regexp.MustCompile("(?s)```.*?```|~~~.*?~~~")
 	reInlineCode = regexp.MustCompile("`[^`]*`")
-	reAngle      = regexp.MustCompile(`[<>]`)
 )
-
-// Severity classifies a finding.
-type Severity string
-
-// Finding is one lint result.
-type Finding struct {
-	Severity Severity `json:"severity"`
-	Message  string   `json:"message"`
-}
 
 // Options are the opt-in, registry/flag-driven budget and structure checks. The
 // zero value enforces nothing, so existing trees keep passing.
@@ -47,54 +32,51 @@ type Options struct {
 	RequiredSections    []string // heading substrings that must be present and non-empty
 }
 
-// Check returns every lint finding for s. An empty slice means the skill passes.
+// Check returns every lint diagnostic for s. An empty slice means the skill passes.
 //
 // Requires: s is a loaded skill (Name/Description/Body/FrontmatterKeys populated
 //
 //	from its SKILL.md).
 //
-// Ensures:  the result contains a Severity==Error finding for every hard defect
+// Ensures:  the result contains a Severity==error diagnostic for every hard defect
 //
 //	(disallowed key, name/dir mismatch, over-long or empty or markup-laden
 //	description, escaping/absolute body links, runtime binding); it is pure.
-func Check(s *skill.Skill, opts Options) []Finding {
-	var fs []Finding
-	fs = append(fs, checkFrontmatter(s)...)
-	fs = append(fs, checkBody(s.Body)...)
-	fs = append(fs, checkBudget(s, opts)...)
-	for _, h := range neutrality.Scan([]neutrality.NamedFile{{Name: "SKILL.md", Content: s.Raw}}) {
-		fs = append(fs, Finding{
-			Severity: Error,
-			Message:  fmt.Sprintf("runtime-bound wording at SKILL.md:%d: %q", h.Line, h.Text),
-		})
+func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
+	ds := speclint.Frontmatter(s)
+	if want := filepath.Base(s.Dir); s.Name != want {
+		ds = append(ds, diagf("frontmatter: name %q != folder %q", s.Name, want))
 	}
-	return fs
+	ds = append(ds, checkBody(s.Body)...)
+	ds = append(ds, checkBudget(s, opts)...)
+	for _, h := range neutrality.Scan([]neutrality.NamedFile{{Name: "SKILL.md", Content: s.Raw}}) {
+		ds = append(ds, diagf("runtime-bound wording at SKILL.md:%d: %q", h.Line, h.Text))
+	}
+	return ds
 }
 
 // checkBudget applies the opt-in registry/flag limits: description and body word
 // budgets and required, non-empty sections. Zero limits and an empty section
 // list are no-ops.
-func checkBudget(s *skill.Skill, opts Options) []Finding {
-	var fs []Finding
+func checkBudget(s *skill.Skill, opts Options) []finding.Diagnostic {
+	var ds []finding.Diagnostic
 	if opts.MaxDescriptionWords > 0 {
 		if n := len(strings.Fields(s.Description)); n > opts.MaxDescriptionWords {
-			fs = append(fs, Finding{Error, fmt.Sprintf(
-				"frontmatter: description %d words > max %d", n, opts.MaxDescriptionWords)})
+			ds = append(ds, diagf(
+				"frontmatter: description %d words > max %d", n, opts.MaxDescriptionWords))
 		}
 	}
 	if opts.MaxBodyWords > 0 {
 		if n := len(strings.Fields(s.Body)); n > opts.MaxBodyWords {
-			fs = append(fs, Finding{Error, fmt.Sprintf(
-				"body: %d words > max %d", n, opts.MaxBodyWords)})
+			ds = append(ds, diagf("body: %d words > max %d", n, opts.MaxBodyWords))
 		}
 	}
 	for _, name := range opts.RequiredSections {
 		if !sectionSatisfied(s.Body, name) {
-			fs = append(fs, Finding{Error, fmt.Sprintf(
-				"body: required section %q is missing or empty", name)})
+			ds = append(ds, diagf("body: required section %q is missing or empty", name))
 		}
 	}
-	return fs
+	return ds
 }
 
 // sectionSatisfied reports whether the body has a "## ..." heading whose text
@@ -119,53 +101,12 @@ func sectionSatisfied(body, name string) bool {
 	return inSection && hasContent
 }
 
-// allowedKey reports whether k is a spec-permitted frontmatter key.
-func allowedKey(k string) bool {
-	switch k {
-	case "name", "description", "tags", "allowed-tools":
-		return true
-	default:
-		return false
-	}
-}
-
-func checkFrontmatter(s *skill.Skill) []Finding {
-	var fs []Finding
-	for _, k := range s.FrontmatterKeys {
-		if !allowedKey(k) {
-			fs = append(fs, Finding{Error, fmt.Sprintf("frontmatter: disallowed key %q", k)})
-		}
-	}
-	if want := filepath.Base(s.Dir); s.Name != want {
-		fs = append(
-			fs,
-			Finding{Error, fmt.Sprintf("frontmatter: name %q != folder %q", s.Name, want)},
-		)
-	}
-	switch n := utf8.RuneCountInString(s.Description); {
-	case n == 0:
-		fs = append(fs, Finding{Error, "frontmatter: description is empty"})
-	case n > descCharLimit:
-		fs = append(
-			fs,
-			Finding{Error, fmt.Sprintf("frontmatter: description %d runes > %d", n, descCharLimit)},
-		)
-	}
-	if reAngle.MatchString(s.Description) {
-		fs = append(
-			fs,
-			Finding{Error, "frontmatter: description contains angle brackets (must be plain text)"},
-		)
-	}
-	return fs
-}
-
-func checkBody(body string) []Finding {
+func checkBody(body string) []finding.Diagnostic {
 	prose := stripCode(body)
-	var fs []Finding
+	var ds []finding.Diagnostic
 	add := func(cond bool, msg string) {
 		if cond {
-			fs = append(fs, Finding{Error, msg})
+			ds = append(ds, diag(msg))
 		}
 	}
 	add(
@@ -174,7 +115,7 @@ func checkBody(body string) []Finding {
 	)
 	add(strings.Contains(prose, "](/"), "body: absolute-path link '](/ ...)' not allowed")
 	add(strings.Contains(prose, "candidates/"), "body: 'candidates/' path leaked into skill body")
-	return fs
+	return ds
 }
 
 // stripCode removes fenced blocks and inline code spans so that code samples
@@ -182,4 +123,14 @@ func checkBody(body string) []Finding {
 func stripCode(body string) string {
 	body = reFence.ReplaceAllString(body, "")
 	return reInlineCode.ReplaceAllString(body, "")
+}
+
+// diag builds an error-severity diagnostic. Category and Path are left empty so
+// findings marshal as {severity, message}, matching exegesis's prior output.
+func diag(message string) finding.Diagnostic {
+	return finding.Diagnostic{Severity: finding.SeverityError, Message: message}
+}
+
+func diagf(format string, a ...any) finding.Diagnostic {
+	return diag(fmt.Sprintf(format, a...))
 }
