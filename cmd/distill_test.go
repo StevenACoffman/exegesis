@@ -21,6 +21,9 @@ const validStage0 = `{
   "unproven_assumptions": ["unproven"]
 }`
 
+// validExtract is a JSON extractor reply.
+const validExtract = `{"units": [{"title": "Unit One", "type": "framework", "body": "in my own words"}]}`
+
 // distillOutcome mirrors the fields of the JSON distill prints that the tests
 // assert on.
 type distillOutcome struct {
@@ -37,7 +40,7 @@ func distillArgs(book, out string) []string {
 	return []string{"distill", "--driver", "agent", "--title", "Demo Book", "--out", out, book}
 }
 
-func TestDistillAgentLoopStage0(t *testing.T) {
+func TestDistillAgentLoop(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	book := filepath.Join(dir, "book.txt")
@@ -47,47 +50,68 @@ func TestDistillAgentLoopStage0(t *testing.T) {
 	out := filepath.Join(dir, "books")
 	args := distillArgs(book, out)
 
-	// Round 1: distill emits the overview prompt.
-	s1, err := run(t, args...)
-	if err != nil {
-		t.Fatalf("round 1: %v\n%s", err, s1)
-	}
-	var o1 distillOutcome
-	if err := json.Unmarshal([]byte(s1), &o1); err != nil {
-		t.Fatalf("round 1 output is not JSON: %v\n%s", err, s1)
-	}
+	// Round 1: the overview prompt.
+	o1 := runRound(t, args)
 	if o1.Status != "needs_prompts" || o1.Stage != "overview" || len(o1.Prompts) != 1 {
 		t.Fatalf("want one overview prompt, got %+v", o1)
 	}
 	if !strings.Contains(o1.Resume, "distill") {
 		t.Errorf("resume should be the re-run command, got %q", o1.Resume)
 	}
+	answerAll(t, o1, validStage0)
 
-	// The agent answers the prompt at its response_path.
-	if err := os.WriteFile(o1.Prompts[0].ResponsePath, []byte(validStage0), 0o644); err != nil {
-		t.Fatalf("answer prompt: %v", err)
+	// Round 2: the extract batch.
+	o2 := runRound(t, args)
+	if o2.Status != "needs_prompts" || o2.Stage != "extract" || len(o2.Prompts) != 5 {
+		t.Fatalf("want the 5-prompt extract batch, got %+v", o2)
 	}
+	answerAll(t, o2, validExtract)
 
-	// Round 2: distill completes and the gated overview exists.
-	s2, err := run(t, args...)
+	// Round 3: complete, with the overview and candidate files written.
+	o3 := runRound(t, args)
+	if o3.Status != "complete" {
+		t.Fatalf("want complete, got %+v", o3)
+	}
+	tree := filepath.Join(out, "demo-book")
+	assertOverviewValid(t, tree)
+	if _, statErr := os.Stat(filepath.Join(tree, "candidates", "frameworks.md")); statErr != nil {
+		t.Errorf("expected candidate files under candidates/: %v", statErr)
+	}
+}
+
+// runRound runs the args through cmd.Run and returns the parsed Outcome.
+func runRound(t *testing.T, args []string) distillOutcome {
+	t.Helper()
+	out, err := run(t, args...)
 	if err != nil {
-		t.Fatalf("round 2: %v\n%s", err, s2)
+		t.Fatalf("run %v: %v\n%s", args, err, out)
 	}
-	var o2 distillOutcome
-	if err := json.Unmarshal([]byte(s2), &o2); err != nil {
-		t.Fatalf("round 2 output is not JSON: %v\n%s", err, s2)
+	var o distillOutcome
+	if err := json.Unmarshal([]byte(out), &o); err != nil {
+		t.Fatalf("outcome is not JSON: %v\n%s", err, out)
 	}
-	if o2.Status != "complete" {
-		t.Fatalf("want complete, got %+v", o2)
+	return o
+}
+
+// answerAll writes body to every prompt's response_path.
+func answerAll(t *testing.T, o distillOutcome, body string) {
+	t.Helper()
+	for _, p := range o.Prompts {
+		if err := os.WriteFile(p.ResponsePath, []byte(body), 0o644); err != nil {
+			t.Fatalf("answer prompt: %v", err)
+		}
 	}
-	overviewPath := filepath.Join(out, "demo-book", "BOOK_OVERVIEW.md")
-	md, readErr := os.ReadFile(overviewPath)
-	if readErr != nil {
-		t.Fatalf("expected %s to be written: %v", overviewPath, readErr)
+}
+
+// assertOverviewValid reads tree/BOOK_OVERVIEW.md and checks it passes the gate.
+func assertOverviewValid(t *testing.T, tree string) {
+	t.Helper()
+	md, err := os.ReadFile(filepath.Join(tree, "BOOK_OVERVIEW.md"))
+	if err != nil {
+		t.Fatalf("expected the overview to be written: %v", err)
 	}
-	// The generated overview is valid per the Stage-0 gate.
 	if problems := overview.Check(string(md)); len(problems) != 0 {
-		t.Errorf("generated overview should pass the Stage-0 gate, got %v", problems)
+		t.Errorf("overview should pass the Stage-0 gate, got %v", problems)
 	}
 }
 
