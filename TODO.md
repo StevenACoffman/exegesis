@@ -53,7 +53,7 @@ gates it) **and** optional per-case `checks` (skillsaw's `judge` consumes them):
 
 - [ ] `exegesis distill` — the agent-driver loop (Stage 0→4) that emits prompts as JSON and
       resumes from a content-addressed cache. Largest piece; being built in phases.
-      **Done (`--driver agent`, Stages 0–1):** `cmd/distill` over a pure `internal/distill` core.
+      **Done (`--driver agent`, Stages 0–2):** `cmd/distill` over a pure `internal/distill` core.
       `protocol.go` (Message/PromptRequest/Outcome), `cache.go` (content-addressed response store;
       presence = answered), `run.go` (a generic `Run` that walks an ordered `stages()` sequence:
       the first stage needing prompts stops the round; all satisfied = complete — plus shared
@@ -61,13 +61,16 @@ gates it) **and** optional per-case `checks` (skillsaw's `judge` consumes them):
       (a gate failure re-prompts via a growing content-address so the walk always terminates).
       `stage1.go` = 5 parallel extractor prompts (frameworks/principles/cases/counter-examples/
       glossary) → `candidates/<type>.md` (emits the whole batch; writes each file as its prompt is
-      answered). Offloads `identity.Hash`, `atomicfile.WriteFile`, `internal/overview.Check`,
-      `skill.Slug`.
-      **Still to build:** Stage 1.5/2 (triple-verify → `rejected/`; RIA++ construct →
-      `<slug>/SKILL.md`) — **bump to skillet v0.4.0** and offload to `ruleset/distill` +
-      `ruleset/synthesize` (`LoadInputs`/`FillTemplate` on `{{RULESETS}}`); Stage 3 (deterministic
-      link/index via `internal/related`); Stage 4 (`testprompts` scaffold + `tests`/`verify` gating
-      + `manifest`); and `--driver http` behind a `Driver` seam. New stages slot into `stages()`.
+      answered). `stage2.go` = construct: assembles the candidate files into one prompt with
+      **skillet v0.4.0 `ruleset/synthesize`** (`FillTemplate` on `{{RULESETS}}`; go.mod bumped to
+      v0.4.0), and writes each `<slug>/SKILL.md` (frontmatter + RIA body + `## Related skills`) and
+      `test-prompts.json` (via `skillet/testprompts`) — the generated output passes `lint.Check`
+      and `testprompts.Validate` (asserted in tests). Offloads `identity.Hash`, `atomicfile`,
+      `internal/overview.Check`, `skill.Slug`, `ruleset/synthesize`, `testprompts`, `internal/related`.
+      **Still to build:** Stage 3 (deterministic INDEX.md — reuse `internal/related`; ideally via a
+      shared `internal/indexgen` extracted from `cmd/index` so the two don't drift); and
+      `--driver http` behind a `Driver` seam. New stages slot into `stages()`. (distill currently
+      completes after writing skills; run `exegesis index` / `exegesis verify` to finalize/gate.)
 - [x] `exegesis index` — regenerate `INDEX.md` (skill list + Mermaid graph +
       dependency-ordered learning path) from each skill's `## Related skills`. DONE (PR #2):
       `cmd/index` over the pure `internal/related` core (parse/serialize + deterministic
