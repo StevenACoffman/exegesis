@@ -56,8 +56,9 @@ func New(stdin io.Reader, stdout, stderr io.Writer) *Config {
 			"`## Related skills` section\n" +
 			"  index    regenerate INDEX.md from every skill's " +
 			"`## Related skills` section\n" +
-			"  version  print version information\n\n" +
-			"Planned (not yet built): distill.",
+			"  distill  run the book2skill pipeline as a resumable " +
+			"agent-driven loop (Stage 0 so far)\n" +
+			"  version  print version information",
 	}
 	return &cfg
 }

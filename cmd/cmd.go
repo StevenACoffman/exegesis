@@ -16,6 +16,7 @@ import (
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 
+	"github.com/StevenACoffman/exegesis/cmd/distill"
 	"github.com/StevenACoffman/exegesis/cmd/index"
 	"github.com/StevenACoffman/exegesis/cmd/link"
 	"github.com/StevenACoffman/exegesis/cmd/lint"
@@ -41,6 +42,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	verify.New(r)
 	link.New(r)
 	index.New(r)
+	distill.New(r)
 	// register new commands here
 
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("EXEGESIS")); err != nil {
