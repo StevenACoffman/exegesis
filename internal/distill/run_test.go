@@ -7,6 +7,10 @@ import (
 	"testing"
 
 	"github.com/StevenACoffman/exegesis/internal/distill"
+	"github.com/StevenACoffman/exegesis/internal/lint"
+	"github.com/StevenACoffman/skillet/finding"
+	"github.com/StevenACoffman/skillet/skill"
+	"github.com/StevenACoffman/skillet/testprompts"
 )
 
 var extractorTypes = []string{"frameworks", "principles", "cases", "counter-examples", "glossary"}
@@ -42,6 +46,39 @@ func extractResponse() *distill.Stage1Response {
 	}}
 }
 
+// sixPrompts is a gate-passing test-prompt set: 3 should_trigger, 2
+// should_not_trigger, 1 edge_case.
+func sixPrompts() []distill.TestPromptSpec {
+	return []distill.TestPromptSpec{
+		{Type: "should_trigger", Prompt: "p1", Expected: "e1"},
+		{Type: "should_trigger", Prompt: "p2", Expected: "e2"},
+		{Type: "should_trigger", Prompt: "p3", Expected: "e3"},
+		{Type: "should_not_trigger", Prompt: "p4", Expected: "e4"},
+		{Type: "should_not_trigger", Prompt: "p5", Expected: "e5"},
+		{Type: "edge_case", Prompt: "p6", Expected: "e6"},
+	}
+}
+
+// cleanSkill is a SkillSpec whose rendered SKILL.md passes lint.Check.
+func cleanSkill(slug string) distill.SkillSpec {
+	return distill.SkillSpec{
+		Slug: slug,
+		Description: "Invoke when a plan looks obviously correct and it should be " +
+			"stress-tested from the opposite direction.",
+		Body: "## R\n\nquote\n\n## I\n\nmethod in own words\n\n## A1\n\nauthor example\n\n" +
+			"## A2\n\nwhen to use\n\n## E\n\n1. step 2. step 3. step\n\n## B\n\nwhen it does not apply",
+		TestPrompts: sixPrompts(),
+	}
+}
+
+func constructResponse() *distill.Stage2Response {
+	a := cleanSkill("reverse-thinking")
+	a.Related = []distill.RelatedSpec{
+		{Kind: "depends-on", Target: "first-principles", Rationale: "builds on base reasoning"},
+	}
+	return &distill.Stage2Response{Skills: []distill.SkillSpec{a, cleanSkill("first-principles")}}
+}
+
 // writeJSON marshals v and writes it to path, simulating the agent answering a
 // prompt at its response_path.
 func writeJSON(t *testing.T, path string, v any) {
@@ -66,48 +103,75 @@ func writeBook(t *testing.T) (tree, bookPath string) {
 	return tree, bookPath
 }
 
+func mustRun(t *testing.T, tree, bookPath string) distill.Outcome {
+	t.Helper()
+	o, err := distill.Run(tree, bookPath, "resume")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	return o
+}
+
+// advanceToConstruct answers the overview and extract rounds and returns the
+// construct-stage Outcome.
+func advanceToConstruct(t *testing.T, tree, bookPath string) distill.Outcome {
+	t.Helper()
+	o := mustRun(t, tree, bookPath)
+	writeJSON(t, o.Prompts[0].ResponsePath, validResponse())
+	o = mustRun(t, tree, bookPath)
+	for _, p := range o.Prompts {
+		writeJSON(t, p.ResponsePath, extractResponse())
+	}
+	return mustRun(t, tree, bookPath)
+}
+
 func TestRunAdvancesThroughStages(t *testing.T) {
 	t.Parallel()
 	tree, bookPath := writeBook(t)
 
-	// Round 1: the overview prompt.
-	o1, err := distill.Run(tree, bookPath, "resume")
-	if err != nil {
-		t.Fatalf("round 1: %v", err)
+	construct := advanceToConstruct(t, tree, bookPath)
+	if construct.Status != distill.StatusNeedsPrompts || construct.Stage != "construct" ||
+		len(construct.Prompts) != 1 {
+		t.Fatalf("want one construct prompt, got %+v", construct)
 	}
-	if o1.Status != distill.StatusNeedsPrompts || o1.Stage != "overview" || len(o1.Prompts) != 1 {
-		t.Fatalf("want one overview prompt, got %+v", o1)
-	}
-	writeJSON(t, o1.Prompts[0].ResponsePath, validResponse())
+	writeJSON(t, construct.Prompts[0].ResponsePath, constructResponse())
 
-	// Round 2: the extract batch (one prompt per extractor).
-	o2, err := distill.Run(tree, bookPath, "resume")
-	if err != nil {
-		t.Fatalf("round 2: %v", err)
+	final := mustRun(t, tree, bookPath)
+	if final.Status != distill.StatusComplete {
+		t.Fatalf("want complete, got %+v", final)
 	}
-	if o2.Status != distill.StatusNeedsPrompts || o2.Stage != "extract" {
-		t.Fatalf("want the extract batch, got %+v", o2)
-	}
-	if len(o2.Prompts) != len(extractorTypes) {
-		t.Fatalf("want %d extractor prompts, got %d", len(extractorTypes), len(o2.Prompts))
-	}
-	for _, p := range o2.Prompts {
-		writeJSON(t, p.ResponsePath, extractResponse())
-	}
-
-	// Round 3: complete, with every candidate file written.
-	o3, err := distill.Run(tree, bookPath, "resume")
-	if err != nil {
-		t.Fatalf("round 3: %v", err)
-	}
-	if o3.Status != distill.StatusComplete {
-		t.Fatalf("want complete, got %+v", o3)
-	}
-	for _, typ := range extractorTypes {
-		path := filepath.Join(tree, "candidates", typ+".md")
-		if _, statErr := os.Stat(path); statErr != nil {
-			t.Errorf("expected candidate file %s: %v", path, statErr)
+	for _, slug := range []string{"reverse-thinking", "first-principles"} {
+		for _, name := range []string{"SKILL.md", "test-prompts.json"} {
+			if _, err := os.Stat(filepath.Join(tree, slug, name)); err != nil {
+				t.Errorf("expected %s/%s: %v", slug, name, err)
+			}
 		}
+	}
+}
+
+func TestConstructOutputPassesGates(t *testing.T) {
+	t.Parallel()
+	tree, bookPath := writeBook(t)
+	construct := advanceToConstruct(t, tree, bookPath)
+	writeJSON(t, construct.Prompts[0].ResponsePath, constructResponse())
+	mustRun(t, tree, bookPath) // completes, writing the skills
+
+	dir := filepath.Join(tree, "reverse-thinking")
+	s, err := skill.Load(dir)
+	if err != nil {
+		t.Fatalf("load generated skill: %v", err)
+	}
+	for _, f := range lint.Check(s, lint.Options{}) {
+		if f.Severity == finding.SeverityError {
+			t.Errorf("generated SKILL.md must pass lint, got: %s", f.Message)
+		}
+	}
+	f, err := testprompts.Load(filepath.Join(dir, "test-prompts.json"))
+	if err != nil {
+		t.Fatalf("load generated test-prompts: %v", err)
+	}
+	if problems := f.Validate(); len(problems) != 0 {
+		t.Errorf("generated test-prompts must pass composition gate, got %v", problems)
 	}
 }
 
@@ -115,16 +179,10 @@ func TestRunRePromptsOnOverviewGateFailure(t *testing.T) {
 	t.Parallel()
 	tree, bookPath := writeBook(t)
 
-	first, err := distill.Run(tree, bookPath, "resume")
-	if err != nil {
-		t.Fatalf("first run: %v", err)
-	}
+	first := mustRun(t, tree, bookPath)
 	writeJSON(t, first.Prompts[0].ResponsePath, sparseResponse())
 
-	second, err := distill.Run(tree, bookPath, "resume")
-	if err != nil {
-		t.Fatalf("second run: %v", err)
-	}
+	second := mustRun(t, tree, bookPath)
 	if second.Status != distill.StatusNeedsPrompts || second.Stage != "overview" {
 		t.Fatalf("a gate-failing answer should re-prompt the overview, got %+v", second)
 	}
@@ -135,12 +193,8 @@ func TestRunRePromptsOnOverviewGateFailure(t *testing.T) {
 		t.Error("a failing overview must not be written")
 	}
 
-	// A valid correction advances past Stage 0 into the extract stage.
 	writeJSON(t, second.Prompts[0].ResponsePath, validResponse())
-	third, err := distill.Run(tree, bookPath, "resume")
-	if err != nil {
-		t.Fatalf("third run: %v", err)
-	}
+	third := mustRun(t, tree, bookPath)
 	if third.Status != distill.StatusNeedsPrompts || third.Stage != "extract" {
 		t.Errorf("want the extract stage after a valid overview, got %+v", third)
 	}
@@ -149,22 +203,13 @@ func TestRunRePromptsOnOverviewGateFailure(t *testing.T) {
 func TestRunExtractPartialBatch(t *testing.T) {
 	t.Parallel()
 	tree, bookPath := writeBook(t)
-	first, err := distill.Run(tree, bookPath, "resume")
-	if err != nil {
-		t.Fatalf("first run: %v", err)
-	}
+	first := mustRun(t, tree, bookPath)
 	writeJSON(t, first.Prompts[0].ResponsePath, validResponse())
-	batch, err := distill.Run(tree, bookPath, "resume")
-	if err != nil {
-		t.Fatalf("extract round: %v", err)
-	}
+	batch := mustRun(t, tree, bookPath)
 
 	// Answer only the first extractor; the rest must still be pending.
 	writeJSON(t, batch.Prompts[0].ResponsePath, extractResponse())
-	again, err := distill.Run(tree, bookPath, "resume")
-	if err != nil {
-		t.Fatalf("partial extract round: %v", err)
-	}
+	again := mustRun(t, tree, bookPath)
 	if again.Status != distill.StatusNeedsPrompts || again.Stage != "extract" {
 		t.Fatalf("want still-pending extract prompts, got %+v", again)
 	}

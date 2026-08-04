@@ -24,6 +24,21 @@ const validStage0 = `{
 // validExtract is a JSON extractor reply.
 const validExtract = `{"units": [{"title": "Unit One", "type": "framework", "body": "in my own words"}]}`
 
+// validConstruct is a JSON construct reply with one gate-passing skill.
+const validConstruct = `{"skills": [{
+  "slug": "reverse-thinking",
+  "description": "Invoke when a plan looks obviously correct and it should be stress-tested in reverse.",
+  "body": "## R\n\nquote\n\n## I\n\nmethod\n\n## A1\n\nexample\n\n## A2\n\nwhen\n\n## E\n\n1. a 2. b 3. c\n\n## B\n\nnot applicable when",
+  "test_prompts": [
+    {"type": "should_trigger", "prompt": "p1", "expected": "e1"},
+    {"type": "should_trigger", "prompt": "p2", "expected": "e2"},
+    {"type": "should_trigger", "prompt": "p3", "expected": "e3"},
+    {"type": "should_not_trigger", "prompt": "p4", "expected": "e4"},
+    {"type": "should_not_trigger", "prompt": "p5", "expected": "e5"},
+    {"type": "edge_case", "prompt": "p6", "expected": "e6"}
+  ]
+}]}`
+
 // distillOutcome mirrors the fields of the JSON distill prints that the tests
 // assert on.
 type distillOutcome struct {
@@ -67,15 +82,24 @@ func TestDistillAgentLoop(t *testing.T) {
 	}
 	answerAll(t, o2, validExtract)
 
-	// Round 3: complete, with the overview and candidate files written.
+	// Round 3: the construct prompt.
 	o3 := runRound(t, args)
-	if o3.Status != "complete" {
-		t.Fatalf("want complete, got %+v", o3)
+	if o3.Status != "needs_prompts" || o3.Stage != "construct" || len(o3.Prompts) != 1 {
+		t.Fatalf("want one construct prompt, got %+v", o3)
+	}
+	answerAll(t, o3, validConstruct)
+
+	// Round 4: complete, with the overview, candidates, and a skill written.
+	o4 := runRound(t, args)
+	if o4.Status != "complete" {
+		t.Fatalf("want complete, got %+v", o4)
 	}
 	tree := filepath.Join(out, "demo-book")
 	assertOverviewValid(t, tree)
-	if _, statErr := os.Stat(filepath.Join(tree, "candidates", "frameworks.md")); statErr != nil {
-		t.Errorf("expected candidate files under candidates/: %v", statErr)
+	for _, p := range []string{"candidates/frameworks.md", "reverse-thinking/SKILL.md", "reverse-thinking/test-prompts.json"} {
+		if _, statErr := os.Stat(filepath.Join(tree, p)); statErr != nil {
+			t.Errorf("expected %s: %v", p, statErr)
+		}
 	}
 }
 
