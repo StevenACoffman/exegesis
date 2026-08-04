@@ -95,9 +95,15 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
 
 ## Cross-repo (shared with skillsaw)
 
-- [ ] Extract the `test-prompts.json` + `checks` schema and the agentskills.io
+- [x] Extract the `test-prompts.json` + `checks` schema and the agentskills.io
       frontmatter lint into a **shared Go module** so exegesis and skillsaw cannot
-      drift. Until then both sides keep byte-identical JSON tags by hand.
+      drift. DONE (2026-08-03): the schema was already shared via `skillet/testprompts`
+      + `skillet/judge`; the frontmatter spec now lives in `skillet/speclint`
+      (`DescriptionMaxRunes`, `AllowedFrontmatterKey`, `Frontmatter`). `internal/lint`
+      delegates the frontmatter checks to `speclint` and now emits
+      `skillet/finding.Diagnostic` (dropping exegesis's local `Finding` type — closes
+      the deferred finding→skillet migration; `--json` output unchanged). skillsaw
+      shares the cap via `speclint.DescriptionMaxRunes`.
 
 ## Housekeeping
 
@@ -107,3 +113,6 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       detects a selected group parent (`Exec == nil`) with a leftover positional
       after Parse and returns `"<cmd>: unknown subcommand \"x\""` (exit 1); a bare
       invocation still returns `ff.ErrNoExec` → exit 0.
+- [ ] Drop the stale `pgx/v5 + sqlc` note in `RULES.md` (§ near line 648) —
+      inherited template boilerplate; exegesis has no database code. `climax lint`
+      is otherwise clean. (survey 2026-08-02)
