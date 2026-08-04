@@ -3,14 +3,20 @@ package distill
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/StevenACoffman/exegesis/internal/overview"
 	"github.com/StevenACoffman/skillet/identity"
 )
 
 // stageOverview is the stage name reported in the Outcome and mixed into the
 // Stage-0 prompt's content address.
 const stageOverview = "overview"
+
+// overviewFile is the Stage-0 artifact written under the tree.
+const overviewFile = "BOOK_OVERVIEW.md"
 
 // stage0System instructs the model to distil a book's overview following Adler's
 // steps and to satisfy the deterministic Stage-0 gate.
@@ -113,4 +119,41 @@ func bulletSection(b *strings.Builder, title string, items []string) {
 		fmt.Fprintf(b, "- %s\n", it)
 	}
 	b.WriteString("\n")
+}
+
+// stage0Step is the Stage-0 step: it returns nil once a gate-passing
+// BOOK_OVERVIEW.md exists, and the overview prompt until then. It walks the
+// correction chain from the cache — building the prompt for the accumulated
+// feedback history, emitting it when unanswered, and otherwise rendering and
+// gating the answer. The history grows every failed round, so each prompt has a
+// distinct content-address and the walk always terminates.
+func stage0Step(pc *pipeline) ([]PromptRequest, error) {
+	if md, err := os.ReadFile(filepath.Join(pc.tree, overviewFile)); err == nil &&
+		len(overview.Check(string(md))) == 0 {
+		return nil, nil
+	}
+	var history []string
+	for attempt := 1; ; attempt++ {
+		p := stage0Prompt(pc.book, history)
+		p.ResponsePath = pc.cache.Path(p.ID)
+		if !pc.cache.Has(p.ID) {
+			return []PromptRequest{p}, nil
+		}
+		r, err := decode[Stage0Response](pc.cache, p.ID, stageOverview)
+		if err != nil {
+			return nil, err
+		}
+		md := renderOverview(&r)
+		problems := overview.Check(md)
+		if len(problems) == 0 {
+			if err := writeArtifact(filepath.Join(pc.tree, overviewFile), md); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		}
+		history = append(
+			history,
+			fmt.Sprintf("attempt %d: %s", attempt, strings.Join(problems, "; ")),
+		)
+	}
 }
