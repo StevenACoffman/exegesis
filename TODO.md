@@ -51,8 +51,21 @@ gates it) **and** optional per-case `checks` (skillsaw's `judge` consumes them):
 
 ## Remaining pipeline (future passes, out of this pass's scope)
 
-- [ ] `exegesis distill` — the agent-driver loop (Stage 0→4) that emits prompts as
-      JSON and resumes from a content-addressed cache. Largest piece; unbuilt.
+- [ ] `exegesis distill` — the agent-driver loop (Stage 0→4) that emits prompts as JSON and
+      resumes from a content-addressed cache. Largest piece. **Phase 1 done** (`--driver agent`
+      + Stage 0): `cmd/distill` over a pure `internal/distill` core — `protocol.go`
+      (Message/PromptRequest/Outcome), `cache.go` (content-addressed response store; presence =
+      answered), `stage0.go` (book → gated `BOOK_OVERVIEW.md`), `run.go` (one round; a gate
+      failure re-prompts via a growing content-address so the walk always terminates). Offloads
+      `identity.Hash` (cache keys), `atomicfile.WriteFile`, `internal/overview.Check` (Stage-0
+      gate), and `skill.Slug`; emits `{status, stage, prompts:[{id,messages,schema,
+      response_path}], resume}` and completes once the gate passes.
+      Still to build: Stage 1 (5 extractor prompts → `candidates/`) and Stage 1.5/2 (triple-verify
+      → `rejected/`; RIA++ construct → `<slug>/SKILL.md`), which **bump to skillet v0.4.0** and
+      offload to `ruleset/distill` (`FillTemplate`/`Generate`) + `ruleset/synthesize`
+      (`LoadInputs`/`FillTemplate` on `{{RULESETS}}`); Stage 3 (deterministic link/index via
+      `internal/related`); Stage 4 (`testprompts` scaffold + `tests`/`verify` gating + `manifest`);
+      and `--driver http` behind a `Driver` seam.
 - [x] `exegesis index` — regenerate `INDEX.md` (skill list + Mermaid graph +
       dependency-ordered learning path) from each skill's `## Related skills`. DONE (PR #2):
       `cmd/index` over the pure `internal/related` core (parse/serialize + deterministic
