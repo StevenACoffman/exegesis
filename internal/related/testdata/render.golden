@@ -1,0 +1,29 @@
+<!-- exegesis:index:start -->
+# Demo Book
+
+by A. Author
+
+## Skills
+
+- **applying** — put it to work
+- **foundations** — the base ideas
+- **measuring** — check the results
+
+## Relationship graph
+
+```mermaid
+graph TD
+  applying["Applying"]
+  foundations["Foundations"]
+  measuring["Measuring"]
+  applying -->|composes-with| measuring
+  applying -->|depends-on| foundations
+  measuring -->|contrasts-with| applying
+```
+
+## Learning path
+
+1. foundations
+2. applying
+3. measuring
+<!-- exegesis:index:end -->
