@@ -1,10 +1,11 @@
 # exegesis — TODO
 
 `exegesis` is the deterministic pipeline/gate CLI behind the **book2skill** skill:
-it distills a book into a tree of Agent Skills and gates each one. Today only
-`version` is implemented; the pipeline below is the roadmap. It is a pure CLI
-tool (Pattern B, `ff/v4`): `main.go` at the root, one command per package under
-`cmd/`, pure logic under `internal/`.
+it distills a book into a tree of Agent Skills and gates each one. Implemented
+today: `version`, `lint`, `tests`, `verify`, `link`, `index`. `distill` and the
+two flag-gates below remain. It is a pure CLI tool (Pattern B, `ff/v4`):
+`main.go` at the root, one command per package under `cmd/`, pure logic under
+`internal/`.
 
 ## Handoff context
 
@@ -52,9 +53,18 @@ gates it) **and** optional per-case `checks` (skillsaw's `judge` consumes them):
 
 - [ ] `exegesis distill` — the agent-driver loop (Stage 0→4) that emits prompts as
       JSON and resumes from a content-addressed cache. Largest piece; unbuilt.
-- [ ] `exegesis index` — regenerate `INDEX.md` (skill list + Mermaid graph +
-      dependency-ordered learning path) from each skill's `## Related skills`.
-- [ ] `exegesis link` — append a related-skill edge to a skill (idempotent).
+- [x] `exegesis index` — regenerate `INDEX.md` (skill list + Mermaid graph +
+      dependency-ordered learning path) from each skill's `## Related skills`. DONE (PR #2):
+      `cmd/index` over the pure `internal/related` core (parse/serialize + deterministic
+      Kahn topo-sort + Mermaid + marker-delimited render). `--check` exits 1 when stale;
+      `--title`/`--author` override the `BOOK_OVERVIEW.md`-derived header; sections added
+      below the generated block are preserved.
+- [x] `exegesis link` — append a related-skill edge to a skill (idempotent). DONE (PR #2):
+      `cmd/link` writes via `atomicfile`, idempotent by (kind, target) — a re-link with a
+      new rationale updates in place. `--kind` validated against the three known kinds.
+      Both commands share `internal/related`; the undifferentiated heavy lifting (skill
+      discovery/load/slug, atomic write, title derivation) is offloaded to skillet v0.1.0.
+      Would move to `skillet/related` if a 2nd consumer (e.g. skillsaw) appears.
 - [ ] `exegesis verify --gates overview` — Stage-0 `BOOK_OVERVIEW.md` gate
       (implemented this pass as part of `verify`; standalone flag still TODO).
 - [ ] `exegesis lint --check redlines` — the mechanical Quality Red Lines.
