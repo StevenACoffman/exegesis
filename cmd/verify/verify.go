@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -26,6 +27,7 @@ type Config struct {
 	*root.Config
 	Manifest string
 	Registry string
+	Gates    string
 	Flags    *ff.FlagSet
 	Command  *ff.Command
 }
@@ -39,6 +41,19 @@ type skillReport struct {
 	problems []string // test-prompts problems (incl. "missing test-prompts.json")
 	hasTests bool
 }
+
+// gateSet is which verify gates to run. The zero value runs none; all=true (the
+// default, when --gates is empty) runs every gate. overview and skills are set
+// when named explicitly.
+type gateSet struct{ all, overview, skills bool }
+
+func (g gateSet) runOverview() bool { return g.all || g.overview }
+
+func (g gateSet) runSkills() bool { return g.all || g.skills }
+
+// strictOverview reports whether the overview gate was named explicitly, in
+// which case a missing BOOK_OVERVIEW.md is a failure rather than skipped.
+func (g gateSet) strictOverview() bool { return g.overview }
 
 // New creates and registers the verify command.
 func New(parent *root.Config) *Config {
@@ -54,20 +69,27 @@ func New(parent *root.Config) *Config {
 		"",
 		"optional registry JSON: expected_skills, max_body_words, max_description_words, required_sections",
 	)
+	cfg.Flags.StringVar(&cfg.Gates, 0, "gates", "",
+		"comma-separated gates to run: overview, skills (default: all)")
 	cfg.Command = &ff.Command{
 		Name:      "verify",
-		Usage:     "exegesis verify [--manifest PATH] [--registry PATH] [TREE]",
+		Usage:     "exegesis verify [--gates LIST] [--manifest PATH] [--registry PATH] [TREE]",
 		ShortHelp: "run every gate over a skill tree and emit skills-manifest.json",
 		LongHelp: `Run the Stage-0 overview gate (if TREE/BOOK_OVERVIEW.md exists), then lint
 and the test-prompts composition gate for every skill under TREE (default "."):
 each immediate subdirectory containing a SKILL.md.
 
+--gates selects a subset: "overview" runs only the Stage-0 BOOK_OVERVIEW.md gate
+(and requires the file to exist); "skills" runs only the per-skill gates. The
+default (no --gates) runs both. Only a run that includes the skills gate writes
+skills-manifest.json.
+
 With --registry, also enforce per-skill word budgets and required sections and
 check the discovered skills against the expected catalog.
 
-On completion it writes skills-manifest.json (structure_verified reflects whether
-every gate passed, and each entry carries the skill's sha256) for the
-skillsaw-skill hand-off, and exits non-zero if any gate failed.`,
+On completion a skills run writes skills-manifest.json (structure_verified
+reflects whether every gate passed, and each entry carries the skill's sha256)
+for the skillsaw-skill hand-off, and exits non-zero if any gate failed.`,
 		Flags: cfg.Flags,
 		Exec:  cfg.exec,
 	}
@@ -84,27 +106,80 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	default:
 		return errors.New("verify: expected at most one tree path")
 	}
-
-	opts, expected, err := cfg.loadRegistry()
+	gates, err := parseGates(cfg.Gates)
 	if err != nil {
 		return fmt.Errorf("verify: %w", err)
 	}
-	overviewProblems := checkOverview(tree)
-	reports, err := verifySkills(tree, opts)
+	ok, err := cfg.run(tree, gates)
 	if err != nil {
 		return fmt.Errorf("verify: %w", err)
 	}
-	catalogProblems := checkCatalog(expected, reports)
-
-	verified := len(overviewProblems) == 0 && len(catalogProblems) == 0 && allPass(reports)
-	if err := cfg.writeManifest(tree, reports, verified); err != nil {
-		return fmt.Errorf("verify: %w", err)
-	}
-	cfg.render(overviewProblems, catalogProblems, reports)
-	if !verified {
+	if !ok {
 		return root.ExitError(1)
 	}
 	return nil
+}
+
+// run executes the selected gates and reports whether all of them passed. The
+// overview outcome is threaded into the skills run so the manifest's
+// structure_verified reflects every gate that ran.
+func (cfg *Config) run(tree string, gates gateSet) (bool, error) {
+	overviewPass := true
+	if gates.runOverview() {
+		problems, ran := checkOverview(tree, gates.strictOverview())
+		if ran {
+			cfg.renderOverview(problems)
+		}
+		overviewPass = len(problems) == 0
+	}
+	if !gates.runSkills() {
+		return overviewPass, nil
+	}
+	return cfg.runSkills(tree, overviewPass)
+}
+
+// runSkills lints and gates every skill under tree, writes the manifest, and
+// reports whether the skills (with the overview result folded in) passed.
+func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
+	opts, expected, err := cfg.loadRegistry()
+	if err != nil {
+		return false, err
+	}
+	reports, err := verifySkills(tree, opts)
+	if err != nil {
+		return false, err
+	}
+	catalogProblems := checkCatalog(expected, reports)
+	verified := overviewPass && len(catalogProblems) == 0 && allPass(reports)
+	if err := cfg.writeManifest(tree, reports, verified); err != nil {
+		return false, err
+	}
+	cfg.renderSkills(catalogProblems, reports)
+	return verified, nil
+}
+
+// parseGates turns the --gates value into a gateSet. An empty value selects all
+// gates (the default). Unknown names are rejected.
+//
+// Ensures: err != nil iff s names a gate other than "overview" or "skills".
+func parseGates(s string) (gateSet, error) {
+	if strings.TrimSpace(s) == "" {
+		return gateSet{all: true}, nil
+	}
+	var g gateSet
+	for _, name := range strings.Split(s, ",") {
+		switch name = strings.TrimSpace(name); name {
+		case "":
+			continue // tolerate stray/trailing commas
+		case "overview":
+			g.overview = true
+		case "skills":
+			g.skills = true
+		default:
+			return gateSet{}, fmt.Errorf("unknown gate %q (known: overview, skills)", name)
+		}
+	}
+	return g, nil
 }
 
 // loadRegistry turns the optional --registry file into lint options plus the
@@ -153,14 +228,19 @@ func checkCatalog(expected []string, reports []skillReport) []string {
 	return problems
 }
 
-// checkOverview runs the Stage-0 gate when a BOOK_OVERVIEW.md is present. A
-// missing overview is not a failure (a bare skill tree need not have one).
-func checkOverview(tree string) []string {
+// checkOverview runs the Stage-0 gate on TREE/BOOK_OVERVIEW.md. ran reports
+// whether the gate evaluated anything. When the file is missing: a lenient run
+// skips it (nil, false) because a bare skill tree need not have one; a strict
+// run (the overview gate named explicitly) fails it (problem, true).
+func checkOverview(tree string, strict bool) (problems []string, ran bool) {
 	b, err := os.ReadFile(filepath.Join(tree, "BOOK_OVERVIEW.md"))
 	if err != nil {
-		return nil
+		if strict {
+			return []string{"not found (required for --gates overview)"}, true
+		}
+		return nil, false
 	}
-	return overview.Check(string(b))
+	return overview.Check(string(b)), true
 }
 
 func verifySkills(tree string, opts lintlib.Options) ([]skillReport, error) {
@@ -219,10 +299,19 @@ func (cfg *Config) writeManifest(tree string, reports []skillReport, verified bo
 	return nil
 }
 
-func (cfg *Config) render(overviewProblems, catalogProblems []string, reports []skillReport) {
-	for _, p := range overviewProblems {
+// renderOverview reports the overview gate outcome: one line per problem, or a
+// single "ok" line when the gate ran and passed.
+func (cfg *Config) renderOverview(problems []string) {
+	if len(problems) == 0 {
+		_, _ = fmt.Fprintln(cfg.Stdout, "BOOK_OVERVIEW.md: ok")
+		return
+	}
+	for _, p := range problems {
 		_, _ = fmt.Fprintf(cfg.Stdout, "BOOK_OVERVIEW.md: %s\n", p)
 	}
+}
+
+func (cfg *Config) renderSkills(catalogProblems []string, reports []skillReport) {
 	for _, p := range catalogProblems {
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s\n", p)
 	}

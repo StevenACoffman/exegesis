@@ -78,8 +78,13 @@ gates it) **and** optional per-case `checks` (skillsaw's `judge` consumes them):
       Both commands share `internal/related`; the undifferentiated heavy lifting (skill
       discovery/load/slug, atomic write, title derivation) is offloaded to skillet v0.1.0.
       Would move to `skillet/related` if a 2nd consumer (e.g. skillsaw) appears.
-- [ ] `exegesis verify --gates overview` — Stage-0 `BOOK_OVERVIEW.md` gate
-      (implemented this pass as part of `verify`; standalone flag still TODO).
+- [x] `exegesis verify --gates overview` — Stage-0 `BOOK_OVERVIEW.md` gate, standalone.
+      DONE: `verify` gained a `--gates` selector (comma-separated `overview`/`skills`;
+      empty = all, unchanged). `--gates overview` runs only the Stage-0 gate and requires
+      `BOOK_OVERVIEW.md` to exist (missing = failure), where the default full run stays
+      lenient; an overview-only run writes no manifest. Pure `gateSet`/`parseGates` selector
+      over the existing `internal/overview.Check`; no new heavy lifting (overview's markdown
+      parse could later offload to `skillet/markdown`, deferred — works, single consumer).
 - [ ] `exegesis lint --check redlines` — the mechanical Quality Red Lines.
 
 ## Eval-methodology adoptions (from cc-thinking-skills `evals/`)
