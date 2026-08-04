@@ -52,8 +52,12 @@ func New(stdin io.Reader, stdout, stderr io.Writer) *Config {
 			"--scaffold writes a starter\n" +
 			"  verify   run every gate over a skill tree and emit " +
 			"skills-manifest.json\n" +
+			"  link     record a related-skill edge in a skill's " +
+			"`## Related skills` section\n" +
+			"  index    regenerate INDEX.md from every skill's " +
+			"`## Related skills` section\n" +
 			"  version  print version information\n\n" +
-			"Planned (not yet built): distill, index, link.",
+			"Planned (not yet built): distill.",
 	}
 	return &cfg
 }
