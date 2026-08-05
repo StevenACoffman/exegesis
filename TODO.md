@@ -159,7 +159,62 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       `ruleset/synthesize`). This keeps exegesis on the same `speclint`/`testprompts`
       revision as the rest of the family, guarding the frontmatter/judge drift skillet
       exists to prevent.
+- [x] Bump skillet **v0.5.0 → v0.7.0** with the scaffold work. DONE (2026-08-05):
+      go.mod/go.sum only — additive across the two minors (calibration, skill ENOTFOUND,
+      errs/toerr consolidation); 8 packages test green, `golangci-lint` clean.
 - Two offload candidates remain deferred (single-consumer, no action yet): the pure
       `internal/overview` Markdown parse → a future `skillet/markdown` adoption (converge
       on goldmark), and `internal/related` → `skillet/related` if a 2nd consumer
       (skillsaw/canonizer skill-graphs) appears.
+
+## Convenience gaps (from the gemini_skills gap analysis, 2026-08-05)
+
+Source: `~/Documents/agent-orange/gemini_skills/processing/gap_analysis.md` — a
+retrospective mapping the Python bulk-processing utilities used during the skill
+campaigns against exegesis's native commands. Two genuine gaps; both compose pieces
+exegesis already owns rather than adding a new tier.
+
+- [x] **Bulk offline scaffolder — `exegesis scaffold --schema candidates.json --output-dir …`.**
+      `distill` (agent-driven, LLM-in-the-loop, slow/costly) and `tests --scaffold` (one
+      file's test stubs) exist, but there is no fast **offline** command that takes a
+      structured list of candidate skill definitions and, in one pass, writes each skill's
+      directory, a RIA-TV++ `SKILL.md` frame (the six R/I/A1/A2/E/B segments `lint --check
+      redlines` already enforces), YAML frontmatter honoring `speclint.DescriptionMaxRunes`,
+      and a `test-prompts.json` seeded via `testprompts.DeriveChecks` (≥3 `should_trigger`,
+      ≥2 `should_not_trigger`, ≥1 `edge_case`). Replaces the external
+      `generate_skills_from_schema.py`. Compose what exegesis already has (`skill.Slug`,
+      `atomicfile`, `testprompts.Scaffold`/`DeriveChecks`, `speclint`, `lint.checkRedlines`).
+      **Closed-loop: verify on write** — run the structural gates over what it emits and
+      refuse to leave a failing tree (the "generator executes `verify` on write" the analysis
+      calls for).
+      DONE (2026-08-05): `cmd/scaffold` over a pure `internal/scaffold` core. `RenderSkill`
+      emits the frontmatter + the six RIA-TV++ segment headings + a Related-skills section;
+      `BuildTests` seeds via `testprompts.DeriveChecks` (or a `Scaffold` stub). Verify-on-write
+      runs `lint.Check{Redlines:true}` + `testprompts.Validate` per skill and `RemoveAll`s any
+      newly-created skill that fails (exit non-zero) — so no failing tree is left; existing
+      dirs are skipped. Closed-loop test: scaffold → `verify --check redlines` passes.
+- [ ] **Centralized / bulk link mapper — `exegesis index --interactive` (or a `relations`
+      edge table).** `link` appends one edge at a time and `index` requires every `SKILL.md`
+      to already carry a `## Related skills` section, so cold-starting a book of 20+ new
+      skills means hand-editing 20 files. Add a single-file relationship mapper: read a
+      centralized CSV/JSON edge table (or an interactive checklist) and programmatically write
+      the `## Related skills` sections across all skills through the existing `internal/related`
+      + `link` write path, then regenerate `INDEX.md` via `index`. Replaces
+      `update_index_structure.py`'s book-level indexing convenience.
+- Cross-repo note: if skillsaw adopts the closed-loop structural pre-flight (see
+      `../skillsaw/TODO.md`), `internal/lint`'s redline/RIA checks become a
+      `skillet`-promotion candidate (a `skillet/redlines` or `speclint` extension) so both
+      tools gate structure identically instead of skillsaw shelling out to `exegesis verify`.
+
+## Reasoning-toolkit survey (unified-thinking, 2026-08-05)
+
+Source: a survey of `~/Documents/git/unified-thinking` (a deterministic Go reasoning
+toolkit). **Lowest relevance of the family** — exegesis is structural gating
+(lint/verify/redlines), off-axis from the statistical judgment where that toolkit's
+deterministic rigor lives. No meaningful code to lift.
+
+- The one plausible touch, deferred / low priority: a timeseries **regression gate** to
+  track distill/gate quality over time (fail on a drop vs. a rolling baseline), modeled on
+  unified-thinking's `benchmarks/reporting/timeseries.go` (`DetectRegression`). Its reasoning
+  algorithms (Bayesian/causal/fallacy/MCDA) and keyword detectors do not fit exegesis's
+  structure tier.

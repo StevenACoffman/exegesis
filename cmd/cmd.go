@@ -21,6 +21,7 @@ import (
 	"github.com/StevenACoffman/exegesis/cmd/link"
 	"github.com/StevenACoffman/exegesis/cmd/lint"
 	"github.com/StevenACoffman/exegesis/cmd/root"
+	"github.com/StevenACoffman/exegesis/cmd/scaffold"
 	"github.com/StevenACoffman/exegesis/cmd/tests"
 	"github.com/StevenACoffman/exegesis/cmd/verify"
 	"github.com/StevenACoffman/exegesis/cmd/version"
@@ -43,6 +44,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	link.New(r)
 	index.New(r)
 	distill.New(r)
+	scaffold.New(r)
 	// register new commands here
 
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("EXEGESIS")); err != nil {
