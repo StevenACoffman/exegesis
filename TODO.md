@@ -193,14 +193,17 @@ exegesis already owns rather than adding a new tier.
       runs `lint.Check{Redlines:true}` + `testprompts.Validate` per skill and `RemoveAll`s any
       newly-created skill that fails (exit non-zero) — so no failing tree is left; existing
       dirs are skipped. Closed-loop test: scaffold → `verify --check redlines` passes.
-- [ ] **Centralized / bulk link mapper — `exegesis index --interactive` (or a `relations`
-      edge table).** `link` appends one edge at a time and `index` requires every `SKILL.md`
-      to already carry a `## Related skills` section, so cold-starting a book of 20+ new
-      skills means hand-editing 20 files. Add a single-file relationship mapper: read a
-      centralized CSV/JSON edge table (or an interactive checklist) and programmatically write
-      the `## Related skills` sections across all skills through the existing `internal/related`
-      + `link` write path, then regenerate `INDEX.md` via `index`. Replaces
-      `update_index_structure.py`'s book-level indexing convenience.
+- [x] **Centralized / bulk link mapper — `exegesis relate --edges edges.json TREE`.**
+      `link` appends one edge at a time and `index` requires every `SKILL.md` to already
+      carry a `## Related skills` section, so cold-starting a book of 20+ new skills meant
+      hand-editing 20 files. DONE (2026-08-05): new `relate` command over a pure
+      `internal/relate.Parse` (JSON `{"edges":[{from,kind,to,rationale}]}` → validated,
+      slug-normalized, sorted `[]Group`) + `internal/related.UpsertAll` (the batched,
+      idempotent `link` write path). It writes each source skill's `## Related skills`
+      section, then regenerates `INDEX.md` via the shared `indexgen` (no `index` overload).
+      Re-running the same table is a no-op; a missing source skill errors. Chose a
+      deterministic JSON edge table over `--interactive` (scriptable, testable). Replaces
+      `update_index_structure.py`.
 - Cross-repo note: if skillsaw adopts the closed-loop structural pre-flight (see
       `../skillsaw/TODO.md`), `internal/lint`'s redline/RIA checks become a
       `skillet`-promotion candidate (a `skillet/redlines` or `speclint` extension) so both
