@@ -109,6 +109,19 @@ func Upsert(md string, e Edge) (string, bool) {
 	return strings.Join(out, "\n"), true
 }
 
+// UpsertAll applies every edge to md in order, returning the final content and whether
+// any edge changed it. It is Upsert folded over a slice, so it is idempotent as a whole:
+// a second call with the same edges returns (md, false).
+func UpsertAll(md string, edges []Edge) (string, bool) {
+	out, changed := md, false
+	for i := range edges {
+		next, did := Upsert(out, edges[i])
+		out = next
+		changed = changed || did
+	}
+	return out, changed
+}
+
 // findSection returns the [head, end) line range of the `## Related skills`
 // section: head is the heading line index, end is the first line after the
 // section (the next heading, or len(lines)). found is false when no such
