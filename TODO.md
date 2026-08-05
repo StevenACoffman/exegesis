@@ -2,8 +2,9 @@
 
 `exegesis` is the deterministic pipeline/gate CLI behind the **book2skill** skill:
 it distills a book into a tree of Agent Skills and gates each one. Implemented:
-`version`, `lint`, `tests`, `verify` (+ `--gates`), `link`, `index`, and `distill`
-(agent + http drivers). Only `lint --check redlines` remains. It is a pure CLI tool (Pattern B, `ff/v4`):
+`version`, `lint` (+ `--check redlines`), `tests`, `verify` (+ `--gates`,
+`--check redlines`), `link`, `index`, and `distill` (agent + http drivers) — the
+whole pipeline. It is a pure CLI tool (Pattern B, `ff/v4`):
 `main.go` at the root, one command per package under `cmd/`, pure logic under
 `internal/`.
 
@@ -84,7 +85,13 @@ gates it) **and** optional per-case `checks` (skillsaw's `judge` consumes them):
       lenient; an overview-only run writes no manifest. Pure `gateSet`/`parseGates` selector
       over the existing `internal/overview.Check`; no new heavy lifting (overview's markdown
       parse could later offload to `skillet/markdown`, deferred — works, single consumer).
-- [ ] `exegesis lint --check redlines` — the mechanical Quality Red Lines.
+- [x] `exegesis lint --check redlines` — the mechanical Quality Red Lines. DONE: opt-in
+      `--check redlines` (or `all`) on both `lint` and `verify`, sharing `lint.ParseCheck`.
+      `internal/lint` gains a pure `checkRedlines` enforcing #2 (the six RIA segments R/I/A1/A2/E/B
+      are present), #3 (quotations ≤ 150 words/paragraph), and #5 (the description states a trigger
+      condition — heuristic); the shell adds #4's presence (test-prompts.json exists). Default
+      `lint`/`verify` are unchanged (the red lines are book2skill-specific, so opt-in). Reuses
+      `skillet/finding`; base frontmatter checks stay on `skillet/speclint` (not re-checked here).
 
 ## Eval-methodology adoptions (from cc-thinking-skills `evals/`)
 
