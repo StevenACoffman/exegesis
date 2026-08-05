@@ -235,3 +235,65 @@ func TestScaffoldCommandRequiresSchema(t *testing.T) {
 		t.Errorf("got %v, want a missing --schema error", err)
 	}
 }
+
+func writeEdges(t *testing.T, dir, body string) string {
+	t.Helper()
+	path := filepath.Join(dir, "edges.json")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write edges: %v", err)
+	}
+	return path
+}
+
+func TestRelateWritesSectionsAndRegeneratesIndex(t *testing.T) {
+	t.Parallel()
+	tree := t.TempDir()
+	writeSkill(t, filepath.Join(tree, "widget-maker"))
+	writeSkill(t, filepath.Join(tree, "widget-parts"))
+	edges := writeEdges(
+		t,
+		tree,
+		`{"edges":[{"from":"widget-maker","kind":"depends-on","to":"widget-parts","rationale":"needs parts"}]}`,
+	)
+
+	out, err := run(t, "relate", "--edges", edges, tree)
+	if err != nil {
+		t.Fatalf("relate: %v\n%s", err, out)
+	}
+	raw, readErr := os.ReadFile(filepath.Join(tree, "widget-maker", "SKILL.md"))
+	if readErr != nil {
+		t.Fatalf("read skill: %v", readErr)
+	}
+	if !strings.Contains(string(raw), "depends-on: `widget-parts`") {
+		t.Errorf("related bullet not written:\n%s", raw)
+	}
+	if _, statErr := os.Stat(filepath.Join(tree, "INDEX.md")); statErr != nil {
+		t.Errorf("INDEX.md not regenerated: %v", statErr)
+	}
+	out2, err2 := run(t, "relate", "--edges", edges, tree)
+	if err2 != nil {
+		t.Fatalf("relate re-run: %v", err2)
+	}
+	if !strings.Contains(out2, "unchanged") {
+		t.Errorf("re-run should be idempotent (unchanged), got:\n%s", out2)
+	}
+}
+
+func TestRelateMissingSourceIsError(t *testing.T) {
+	t.Parallel()
+	tree := t.TempDir()
+	edges := writeEdges(t, tree,
+		`{"edges":[{"from":"ghost","kind":"depends-on","to":"other","rationale":"x"}]}`)
+	if _, err := run(t, "relate", "--edges", edges, tree); err == nil ||
+		!strings.Contains(err.Error(), "ghost") {
+		t.Errorf("got %v, want an error naming the missing source skill", err)
+	}
+}
+
+func TestRelateRequiresEdges(t *testing.T) {
+	t.Parallel()
+	if _, err := run(t, "relate", t.TempDir()); err == nil ||
+		!strings.Contains(err.Error(), "--edges is required") {
+		t.Errorf("got %v, want a missing --edges error", err)
+	}
+}

@@ -170,3 +170,22 @@ func equalEdges(a, b []related.Edge) bool {
 	}
 	return true
 }
+
+func TestUpsertAllAppliesEveryEdgeAndIsIdempotent(t *testing.T) {
+	t.Parallel()
+	md := "---\nname: s\n---\n# Body\n\ntext\n"
+	edges := []related.Edge{
+		{Kind: related.DependsOn, Target: "a", Rationale: "needs a"},
+		{Kind: related.ComposesWith, Target: "b", Rationale: "with b"},
+	}
+	out, changed := related.UpsertAll(md, edges)
+	if !changed {
+		t.Fatal("expected changed=true when adding edges")
+	}
+	if got := related.ParseSection(out); !equalEdges(got, edges) {
+		t.Errorf("UpsertAll did not record every edge: %+v", got)
+	}
+	if again, changedAgain := related.UpsertAll(out, edges); changedAgain || again != out {
+		t.Error("UpsertAll should be idempotent on a second identical apply")
+	}
+}
