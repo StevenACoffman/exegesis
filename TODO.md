@@ -150,3 +150,15 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
 - [ ] Drop the stale `pgx/v5 + sqlc` note in `RULES.md` (§ near line 648) —
       inherited template boilerplate; exegesis has no database code. `climax lint`
       is otherwise clean. (survey 2026-08-02)
+
+## Cross-repo alignment (2026-08-05 survey)
+
+- [ ] Bump skillet **v0.4.0 → v0.5.0** to stay on the shared kernel. v0.5.0 adds
+      `ruleset.SourceAnchor` and registers `toerr.WrapWithMessage` with `wrapcheck`.
+      Consumers currently span v0.1.0–v0.5.0; exegesis shares
+      `speclint`/`judge`/`testprompts` with skillsaw (still on v0.1.0), so keeping
+      current guards against the frontmatter/judge drift skillet exists to prevent.
+- Two offload candidates remain deferred (single-consumer, no action yet): the pure
+      `internal/overview` Markdown parse → a future `skillet/markdown` adoption (converge
+      on goldmark), and `internal/related` → `skillet/related` if a 2nd consumer
+      (skillsaw/canonizer skill-graphs) appears.
