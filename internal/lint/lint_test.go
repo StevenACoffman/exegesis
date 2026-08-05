@@ -9,6 +9,9 @@ import (
 	"github.com/StevenACoffman/skillet/skill"
 )
 
+const riaBody = "## R\n\nquote\n\n## I\n\nmethod\n\n## A1\n\nexample\n\n" +
+	"## A2\n\nwhen to use\n\n## E\n\n1. a 2. b 3. c\n\n## B\n\nnot when"
+
 func TestCheckClean(t *testing.T) {
 	t.Parallel()
 	s := &skill.Skill{
@@ -176,4 +179,86 @@ func hasFinding(fs []finding.Diagnostic, sub string) bool {
 		}
 	}
 	return false
+}
+
+// cleanRIA is a skill that passes both the base checks and the red lines.
+func cleanRIA() *skill.Skill {
+	return &skill.Skill{
+		Dir:             "/x/inversion",
+		Name:            "inversion",
+		Description:     "Invoke when a plan looks obviously correct and should be checked in reverse.",
+		FrontmatterKeys: []string{"description", "name"},
+		Body:            riaBody,
+		Raw:             "neutral content",
+	}
+}
+
+func TestRedlinesClean(t *testing.T) {
+	t.Parallel()
+	if fs := lint.Check(cleanRIA(), lint.Options{Redlines: true}); len(fs) != 0 {
+		t.Errorf("a complete RIA skill should pass the red lines, got %v", fs)
+	}
+}
+
+func TestRedlines(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct {
+		mutate  func(s *skill.Skill)
+		wantSub string
+	}{
+		"missing a segment": {
+			mutate:  func(s *skill.Skill) { s.Body = strings.ReplaceAll(s.Body, "## B\n\nnot when", "") },
+			wantSub: `"B" RIA segment`,
+		},
+		"over-long quotation": {
+			mutate:  func(s *skill.Skill) { s.Body += "\n\n> " + strings.Repeat("word ", 151) },
+			wantSub: "over the 150-word limit",
+		},
+		"description states no trigger": {
+			mutate:  func(s *skill.Skill) { s.Description = "A skill about inversion." },
+			wantSub: "trigger condition",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := cleanRIA()
+			tc.mutate(s)
+			if fs := lint.Check(s, lint.Options{Redlines: true}); !hasFinding(fs, tc.wantSub) {
+				t.Errorf("want a finding containing %q, got %v", tc.wantSub, fs)
+			}
+			// Opt-in guard: with red lines off, the defect is not flagged.
+			s2 := cleanRIA()
+			tc.mutate(s2)
+			if fs := lint.Check(s2, lint.Options{}); hasFinding(fs, tc.wantSub) {
+				t.Errorf("red-line defect flagged with Redlines off: %v", fs)
+			}
+		})
+	}
+}
+
+func TestParseCheck(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct {
+		value   string
+		want    bool
+		wantErr bool
+	}{
+		"empty is off":   {"", false, false},
+		"redlines":       {"redlines", true, false},
+		"all":            {"all", true, false},
+		"unknown errors": {"bogus", false, true},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, err := lint.ParseCheck(tc.value)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("ParseCheck(%q) err = %v, wantErr %v", tc.value, err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Errorf("ParseCheck(%q) = %v, want %v", tc.value, got, tc.want)
+			}
+		})
+	}
 }

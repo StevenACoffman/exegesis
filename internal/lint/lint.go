@@ -12,12 +12,16 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/neutrality"
 	"github.com/StevenACoffman/skillet/skill"
 	"github.com/StevenACoffman/skillet/speclint"
 )
+
+// maxQuoteWords is the per-paragraph quotation limit enforced by the red lines.
+const maxQuoteWords = 150
 
 var (
 	reFence      = regexp.MustCompile("(?s)```.*?```|~~~.*?~~~")
@@ -30,6 +34,7 @@ type Options struct {
 	MaxBodyWords        int      // 0 = unlimited
 	MaxDescriptionWords int      // 0 = unlimited
 	RequiredSections    []string // heading substrings that must be present and non-empty
+	Redlines            bool     // opt-in: enforce book2skill's mechanical Quality Red Lines
 }
 
 // Check returns every lint diagnostic for s. An empty slice means the skill passes.
@@ -52,7 +57,118 @@ func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
 	for _, h := range neutrality.Scan([]neutrality.NamedFile{{Name: "SKILL.md", Content: s.Raw}}) {
 		ds = append(ds, diagf("runtime-bound wording at SKILL.md:%d: %q", h.Line, h.Text))
 	}
+	if opts.Redlines {
+		ds = append(ds, checkRedlines(s)...)
+	}
 	return ds
+}
+
+// ParseCheck maps a --check flag value to whether the red-line checks run. An
+// empty value is off; "redlines" and "all" turn them on; anything else errors.
+// It is shared by the lint and verify commands so they agree on the flag.
+func ParseCheck(value string) (bool, error) {
+	switch strings.TrimSpace(value) {
+	case "":
+		return false, nil
+	case "redlines", "all":
+		return true, nil
+	default:
+		return false, fmt.Errorf("unknown --check %q (known: redlines, all)", value)
+	}
+}
+
+// checkRedlines returns the mechanical Quality Red Lines for s: the six RIA
+// segments must be present (#2), quotations stay within the word limit (#3), and
+// the description states a trigger condition (#5). Pure over s.Body and
+// s.Description; code fences are ignored. The #4 test-prompts.json presence check
+// needs the filesystem, so the caller does it.
+func checkRedlines(s *skill.Skill) []finding.Diagnostic {
+	body := reFence.ReplaceAllString(s.Body, "")
+	var ds []finding.Diagnostic
+	ds = append(ds, checkSegments(body)...)
+	ds = append(ds, checkQuotes(body)...)
+	ds = append(ds, checkTrigger(s.Description)...)
+	return ds
+}
+
+// checkSegments flags any missing RIA segment. A segment is present when a "## "
+// heading's first token (its leading letters/digits, upper-cased) is the label.
+func checkSegments(body string) []finding.Diagnostic {
+	present := headingLabels(body)
+	var ds []finding.Diagnostic
+	for _, label := range []string{"R", "I", "A1", "A2", "E", "B"} {
+		if !present[label] {
+			ds = append(ds, diagf(
+				"redline: body is missing the %q RIA segment (needs R, I, A1, A2, E, B)", label))
+		}
+	}
+	return ds
+}
+
+// headingLabels returns the set of "## " heading first-token labels in body.
+func headingLabels(body string) map[string]bool {
+	labels := map[string]bool{}
+	for _, line := range strings.Split(body, "\n") {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "## ")
+		if !ok {
+			continue
+		}
+		if label := leadingAlnum(strings.TrimSpace(rest)); label != "" {
+			labels[strings.ToUpper(label)] = true
+		}
+	}
+	return labels
+}
+
+// leadingAlnum returns the leading run of letters and digits in s.
+func leadingAlnum(s string) string {
+	for i, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return s[:i]
+		}
+	}
+	return s
+}
+
+// checkQuotes flags each contiguous blockquote whose word count exceeds the limit.
+func checkQuotes(body string) []finding.Diagnostic {
+	var ds []finding.Diagnostic
+	var quote []string
+	flush := func() {
+		if n := len(strings.Fields(strings.Join(quote, " "))); n > maxQuoteWords {
+			ds = append(
+				ds,
+				diagf("redline: a quotation is %d words, over the %d-word limit", n, maxQuoteWords),
+			)
+		}
+		quote = quote[:0]
+	}
+	for _, line := range strings.Split(body, "\n") {
+		if t := strings.TrimSpace(line); strings.HasPrefix(t, ">") {
+			quote = append(quote, strings.TrimSpace(strings.TrimPrefix(t, ">")))
+			continue
+		}
+		flush()
+	}
+	flush()
+	return ds
+}
+
+// checkTrigger flags a description that states no trigger condition — it contains
+// none of the cue phrases that signal when to invoke the skill. Heuristic: it
+// catches the "a skill about X" anti-pattern without over-flagging.
+func checkTrigger(description string) []finding.Diagnostic {
+	low := strings.ToLower(description)
+	for _, cue := range []string{"when", "whenever", "invoke", "reach for", "before ", "after "} {
+		if strings.Contains(low, cue) {
+			return nil
+		}
+	}
+	return []finding.Diagnostic{
+		diag(
+			"redline: description should state a trigger condition (when to use the skill), not just what it is",
+		),
+	}
 }
 
 // checkBudget applies the opt-in registry/flag limits: description and body word
