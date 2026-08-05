@@ -38,6 +38,7 @@ func stages() []namedStage {
 		{stageOverview, stage0Step},
 		{stageExtract, stage1Step},
 		{stageConstruct, stage2Step},
+		{stageIndex, stage3Step},
 	}
 }
 

@@ -1,9 +1,9 @@
 # exegesis — TODO
 
 `exegesis` is the deterministic pipeline/gate CLI behind the **book2skill** skill:
-it distills a book into a tree of Agent Skills and gates each one. Implemented
-today: `version`, `lint`, `tests`, `verify`, `link`, `index`. `distill` and the
-two flag-gates below remain. It is a pure CLI tool (Pattern B, `ff/v4`):
+it distills a book into a tree of Agent Skills and gates each one. Implemented:
+`version`, `lint`, `tests`, `verify` (+ `--gates`), `link`, `index`, and `distill`
+(agent + http drivers). Only `lint --check redlines` remains. It is a pure CLI tool (Pattern B, `ff/v4`):
 `main.go` at the root, one command per package under `cmd/`, pure logic under
 `internal/`.
 
@@ -51,26 +51,20 @@ gates it) **and** optional per-case `checks` (skillsaw's `judge` consumes them):
 
 ## Remaining pipeline (future passes, out of this pass's scope)
 
-- [ ] `exegesis distill` — the agent-driver loop (Stage 0→4) that emits prompts as JSON and
-      resumes from a content-addressed cache. Largest piece; being built in phases.
-      **Done (`--driver agent`, Stages 0–2):** `cmd/distill` over a pure `internal/distill` core.
-      `protocol.go` (Message/PromptRequest/Outcome), `cache.go` (content-addressed response store;
-      presence = answered), `run.go` (a generic `Run` that walks an ordered `stages()` sequence:
-      the first stage needing prompts stops the round; all satisfied = complete — plus shared
-      generic `decode[T]`/`writeArtifact` helpers). `stage0.go` = book → gated `BOOK_OVERVIEW.md`
-      (a gate failure re-prompts via a growing content-address so the walk always terminates).
-      `stage1.go` = 5 parallel extractor prompts (frameworks/principles/cases/counter-examples/
-      glossary) → `candidates/<type>.md` (emits the whole batch; writes each file as its prompt is
-      answered). `stage2.go` = construct: assembles the candidate files into one prompt with
-      **skillet v0.4.0 `ruleset/synthesize`** (`FillTemplate` on `{{RULESETS}}`; go.mod bumped to
-      v0.4.0), and writes each `<slug>/SKILL.md` (frontmatter + RIA body + `## Related skills`) and
-      `test-prompts.json` (via `skillet/testprompts`) — the generated output passes `lint.Check`
-      and `testprompts.Validate` (asserted in tests). Offloads `identity.Hash`, `atomicfile`,
-      `internal/overview.Check`, `skill.Slug`, `ruleset/synthesize`, `testprompts`, `internal/related`.
-      **Still to build:** Stage 3 (deterministic INDEX.md — reuse `internal/related`; ideally via a
-      shared `internal/indexgen` extracted from `cmd/index` so the two don't drift); and
-      `--driver http` behind a `Driver` seam. New stages slot into `stages()`. (distill currently
-      completes after writing skills; run `exegesis index` / `exegesis verify` to finalize/gate.)
+- [x] `exegesis distill` — the resumable, agent-driven pipeline. DONE: `cmd/distill` over a pure
+      `internal/distill` core. `run.go`'s `Run` walks an ordered `stages()` sequence (the first stage
+      needing prompts stops the round; all satisfied = complete) with shared generic
+      `decode[T]`/`writeArtifact` helpers. Stages: `stage0` book → gated `BOOK_OVERVIEW.md` (a gate
+      failure re-prompts via a growing content-address so the walk terminates); `stage1` 5 parallel
+      extractors → `candidates/<type>.md`; `stage2` construct (assembles candidates with **skillet
+      v0.4.0 `ruleset/synthesize`**) → `<slug>/SKILL.md` + `test-prompts.json`; `stage3` deterministic
+      `INDEX.md` via the shared `internal/indexgen` (extracted from `cmd/index`, which now delegates
+      to it — no drift). Both drivers: `--driver agent` emits prompt batches as JSON and stops;
+      `--driver http` answers them itself against an OpenAI-compatible endpoint (`HTTPAnswerer` +
+      `RunHTTP` loop, bounded against non-advancing answers) — flags `--endpoint`/`--model`/`--api-key`
+      (or `EXEGESIS_API_KEY`). Tests assert the generated tree passes `lint.Check` + `testprompts.Validate`.
+      Offloads: `identity.Hash`, `atomicfile`, `overview.Check`, `skill.Slug`, `ruleset/synthesize`,
+      `testprompts`, `internal/related`.
 - [x] `exegesis index` — regenerate `INDEX.md` (skill list + Mermaid graph +
       dependency-ordered learning path) from each skill's `## Related skills`. DONE (PR #2):
       `cmd/index` over the pure `internal/related` core (parse/serialize + deterministic

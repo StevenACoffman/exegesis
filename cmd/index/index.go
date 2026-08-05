@@ -10,15 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/exegesis/cmd/root"
-	"github.com/StevenACoffman/exegesis/internal/related"
+	"github.com/StevenACoffman/exegesis/internal/indexgen"
 	"github.com/StevenACoffman/skillet/atomicfile"
-	"github.com/StevenACoffman/skillet/naming"
-	"github.com/StevenACoffman/skillet/skill"
 )
 
 // Config holds the index command configuration.
@@ -75,26 +72,12 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	default:
 		return errors.New("index: expected at most one tree path")
 	}
-	nodes, err := collectNodes(tree)
+	out, err := indexgen.Generate(tree, cfg.Title, cfg.Author)
 	if err != nil {
 		return fmt.Errorf("index: %w", err)
 	}
-	path := filepath.Join(tree, "INDEX.md")
-	existing := readFile(path)
-	out := related.Render(cfg.header(tree), nodes, related.Split(existing))
-	return cfg.writeOrCheck(path, out, existing)
-}
-
-// header resolves the INDEX.md heading: the --title/--author flags, falling back
-// to BOOK_OVERVIEW.md's first heading for the title.
-func (cfg *Config) header(tree string) related.Header {
-	title := cfg.Title
-	if title == "" {
-		if t, err := naming.TitleFromFile(filepath.Join(tree, "BOOK_OVERVIEW.md")); err == nil {
-			title = t
-		}
-	}
-	return related.Header{Title: title, Author: cfg.Author}
+	path := indexgen.Path(tree)
+	return cfg.writeOrCheck(path, out, readFile(path))
 }
 
 // writeOrCheck writes out to path, or under --check reports whether the existing
@@ -113,30 +96,6 @@ func (cfg *Config) writeOrCheck(path, out, existing string) error {
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "wrote %s\n", path)
 	return nil
-}
-
-// collectNodes loads every skill under tree into a related.Node carrying its
-// slug, title, description, and parsed related-skill edges.
-func collectNodes(tree string) ([]related.Node, error) {
-	dirs, err := skill.Discover(tree)
-	if err != nil {
-		return nil, fmt.Errorf("discover skills: %w", err)
-	}
-	nodes := make([]related.Node, 0, len(dirs))
-	for _, dir := range dirs {
-		s, loadErr := skill.Load(dir)
-		if loadErr != nil {
-			return nil, fmt.Errorf("load %s: %w", dir, loadErr)
-		}
-		slug := skill.Slug(filepath.Base(dir))
-		nodes = append(nodes, related.Node{
-			Slug:        slug,
-			Title:       naming.Title(slug),
-			Description: s.Description,
-			Edges:       related.ParseSection(s.Body),
-		})
-	}
-	return nodes, nil
 }
 
 // readFile returns the file's contents, or "" when it does not exist.
