@@ -28,6 +28,7 @@ type Config struct {
 	Manifest string
 	Registry string
 	Gates    string
+	Check    string
 	Flags    *ff.FlagSet
 	Command  *ff.Command
 }
@@ -71,9 +72,11 @@ func New(parent *root.Config) *Config {
 	)
 	cfg.Flags.StringVar(&cfg.Gates, 0, "gates", "",
 		"comma-separated gates to run: overview, skills (default: all)")
+	cfg.Flags.StringVar(&cfg.Check, 0, "check", "",
+		"extra per-skill checks: redlines (or all) enforces the mechanical Quality Red Lines")
 	cfg.Command = &ff.Command{
 		Name:      "verify",
-		Usage:     "exegesis verify [--gates LIST] [--manifest PATH] [--registry PATH] [TREE]",
+		Usage:     "exegesis verify [--gates LIST] [--check redlines] [--manifest PATH] [--registry PATH] [TREE]",
 		ShortHelp: "run every gate over a skill tree and emit skills-manifest.json",
 		LongHelp: `Run the Stage-0 overview gate (if TREE/BOOK_OVERVIEW.md exists), then lint
 and the test-prompts composition gate for every skill under TREE (default "."):
@@ -145,6 +148,11 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	redlines, err := lintlib.ParseCheck(cfg.Check)
+	if err != nil {
+		return false, fmt.Errorf("verify: %w", err)
+	}
+	opts.Redlines = redlines
 	reports, err := verifySkills(tree, opts)
 	if err != nil {
 		return false, err

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -22,6 +24,7 @@ type Config struct {
 	*root.Config
 	JSON         bool
 	Registry     string
+	Check        string
 	MaxBodyWords int
 	MaxDescWords int
 	Flags        *ff.FlagSet
@@ -46,14 +49,19 @@ func New(parent *root.Config) *Config {
 		"fail if the body exceeds this many words (0 = unlimited; overrides registry)")
 	cfg.Flags.IntVar(&cfg.MaxDescWords, 0, "max-desc-words", 0,
 		"fail if the description exceeds this many words (0 = unlimited; overrides registry)")
+	cfg.Flags.StringVar(&cfg.Check, 0, "check", "",
+		"extra checks: redlines (or all) enforces the mechanical Quality Red Lines")
 	cfg.Command = &ff.Command{
 		Name:      "lint",
-		Usage:     "exegesis lint [--json] [--registry PATH] [--max-body-words N] SKILL_DIR ...",
+		Usage:     "exegesis lint [--json] [--check redlines] [--registry PATH] SKILL_DIR ...",
 		ShortHelp: "validate a skill's frontmatter, body links, and runtime-neutrality",
 		LongHelp: `Validate each SKILL_DIR against the agentskills.io spec plus book2skill's
 body red-lines and the runtime-neutrality gate. With --registry (or the
 --max-*-words flags) it also enforces per-skill word budgets and required
-sections. Exits non-zero if any skill has an error-severity finding.`,
+sections. With --check redlines (or --check all) it enforces the mechanical
+Quality Red Lines: the six RIA segments (R/I/A1/A2/E/B), quotations within the
+150-word limit, a description that states a trigger condition, and a present
+test-prompts.json. Exits non-zero if any skill has an error-severity finding.`,
 		Flags: cfg.Flags,
 		Exec:  cfg.exec,
 	}
@@ -75,7 +83,11 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 		if loadErr != nil {
 			return fmt.Errorf("lint: %w", loadErr)
 		}
-		results = append(results, result{Skill: s.Name, Findings: lintlib.Check(s, opts)})
+		findings := lintlib.Check(s, opts)
+		if opts.Redlines {
+			findings = append(findings, missingTestPrompts(dir)...)
+		}
+		results = append(results, result{Skill: s.Name, Findings: findings})
 	}
 	if err := cfg.render(results); err != nil {
 		return err
@@ -107,7 +119,24 @@ func (cfg *Config) options() (lintlib.Options, error) {
 	if cfg.MaxDescWords > 0 {
 		opts.MaxDescriptionWords = cfg.MaxDescWords
 	}
+	redlines, err := lintlib.ParseCheck(cfg.Check)
+	if err != nil {
+		return opts, fmt.Errorf("lint: %w", err)
+	}
+	opts.Redlines = redlines
 	return opts, nil
+}
+
+// missingTestPrompts returns a red-line finding when the skill dir has no
+// test-prompts.json (red line #4's presence; its composition is `exegesis tests`).
+func missingTestPrompts(dir string) []finding.Diagnostic {
+	if _, err := os.Stat(filepath.Join(dir, "test-prompts.json")); err != nil {
+		return []finding.Diagnostic{{
+			Severity: finding.SeverityError,
+			Message:  "redline: test-prompts.json is missing (run: exegesis tests --scaffold)",
+		}}
+	}
+	return nil
 }
 
 func (cfg *Config) render(results []result) error {
