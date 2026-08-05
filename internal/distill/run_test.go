@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/StevenACoffman/exegesis/internal/distill"
@@ -146,6 +147,14 @@ func TestRunAdvancesThroughStages(t *testing.T) {
 				t.Errorf("expected %s/%s: %v", slug, name, err)
 			}
 		}
+	}
+	// Stage 3 wrote INDEX.md linking the two constructed skills.
+	index, err := os.ReadFile(filepath.Join(tree, "INDEX.md"))
+	if err != nil {
+		t.Fatalf("expected INDEX.md: %v", err)
+	}
+	if !strings.Contains(string(index), "reverse-thinking -->|depends-on| first-principles") {
+		t.Errorf("INDEX.md missing the depends-on edge:\n%s", index)
 	}
 }
 
