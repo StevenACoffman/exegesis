@@ -176,3 +176,62 @@ func TestVerifyFailsWithoutTestPrompts(t *testing.T) {
 		t.Errorf("expected manifest to record structure_verified=false, got:\n%s", out)
 	}
 }
+
+func writeSchema(t *testing.T, dir, body string) string {
+	t.Helper()
+	path := filepath.Join(dir, "candidates.json")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write schema: %v", err)
+	}
+	return path
+}
+
+func TestScaffoldCommandWritesGatedTree(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	schema := writeSchema(t, dir, `{"skills":[
+	  {"slug":"widget-maker","description":"Use this when the user asks to build or assemble a widget from parts."},
+	  {"slug":"widget-parts","description":"Use this when the user needs to look up available widget parts and specs."}
+	]}`)
+	out := filepath.Join(dir, "out")
+	stdout, err := run(t, "scaffold", "--schema", schema, "--output-dir", out)
+	if err != nil {
+		t.Fatalf("scaffold: %v\n%s", err, stdout)
+	}
+	for _, slug := range []string{"widget-maker", "widget-parts"} {
+		for _, name := range []string{"SKILL.md", "test-prompts.json"} {
+			if _, statErr := os.Stat(filepath.Join(out, slug, name)); statErr != nil {
+				t.Errorf("expected %s/%s to be written: %v", slug, name, statErr)
+			}
+		}
+	}
+	// Closed loop: the emitted tree passes the same gate on its own.
+	if vout, verr := run(t, "verify", "--check", "redlines", out); verr != nil {
+		t.Errorf("verify on the scaffolded tree failed: %v\n%s", verr, vout)
+	}
+}
+
+func TestScaffoldCommandRemovesFailingSkill(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// Angle brackets in the description violate speclint's plain-text rule.
+	schema := writeSchema(t, dir,
+		`{"skills":[{"slug":"bad-skill","description":"Use this when a <tag> appears."}]}`)
+	out := filepath.Join(dir, "out")
+	_, err := run(t, "scaffold", "--schema", schema, "--output-dir", out)
+	var exit root.ExitError
+	if !errors.As(err, &exit) || int(exit) != 1 {
+		t.Fatalf("got %v, want root.ExitError(1)", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(out, "bad-skill")); !os.IsNotExist(statErr) {
+		t.Error("the failing skill dir should have been removed")
+	}
+}
+
+func TestScaffoldCommandRequiresSchema(t *testing.T) {
+	t.Parallel()
+	if _, err := run(t, "scaffold", "--output-dir", t.TempDir()); err == nil ||
+		!strings.Contains(err.Error(), "--schema is required") {
+		t.Errorf("got %v, want a missing --schema error", err)
+	}
+}
