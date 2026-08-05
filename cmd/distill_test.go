@@ -96,7 +96,7 @@ func TestDistillAgentLoop(t *testing.T) {
 	}
 	tree := filepath.Join(out, "demo-book")
 	assertOverviewValid(t, tree)
-	for _, p := range []string{"candidates/frameworks.md", "reverse-thinking/SKILL.md", "reverse-thinking/test-prompts.json"} {
+	for _, p := range []string{"candidates/frameworks.md", "reverse-thinking/SKILL.md", "reverse-thinking/test-prompts.json", "INDEX.md"} {
 		if _, statErr := os.Stat(filepath.Join(tree, p)); statErr != nil {
 			t.Errorf("expected %s: %v", p, statErr)
 		}
@@ -152,9 +152,9 @@ func TestDistillFlagErrors(t *testing.T) {
 	}{
 		"missing title": {[]string{"distill", book}, "--title is required"},
 		"missing book":  {[]string{"distill", "--title", "X"}, "need exactly one book file"},
-		"http unsupported": {
+		"http without api-key": {
 			[]string{"distill", "--driver", "http", "--title", "X", book},
-			"not yet implemented",
+			"requires --api-key",
 		},
 		"unknown driver": {
 			[]string{"distill", "--driver", "bogus", "--title", "X", book},
