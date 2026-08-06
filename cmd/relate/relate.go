@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -46,8 +47,10 @@ func New(parent *root.Config) *Config {
 batched across the whole book — then regenerate INDEX.md.
 
 Each edge is {from, kind, to, rationale}; kind is depends-on, contrasts-with, or
-composes-with. Re-running the same table is a no-op on the sections. A missing source
-skill is an error. Replaces hand-editing every skill to cold-start a book's graph.`,
+composes-with. Re-running the same table is a no-op on the sections. Both endpoints of
+every edge must be a skill in TREE — an unknown from or to is an error reported before
+anything is written, so a bad table never half-applies. Replaces hand-editing every
+skill to cold-start a book's graph.`,
 		Flags: cfg.Flags,
 		Exec:  cfg.exec,
 	}
@@ -73,6 +76,9 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("relate: %w", err)
 	}
+	if err := checkEndpoints(tree, groups); err != nil {
+		return err
+	}
 	linked, changed := 0, 0
 	for i := range groups {
 		g := &groups[i]
@@ -90,6 +96,32 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "relate: linked %d edge(s) across %d skill(s); wrote %s\n",
 		linked, changed, indexgen.Path(tree))
+	return nil
+}
+
+// checkEndpoints reports every from/to slug in groups that is not a skill under tree.
+//
+// It runs before the first write, so a table with one bad endpoint leaves the book
+// untouched rather than half-applied: the write loop commits each group as it goes, so
+// discovering a bad target on the last group would otherwise leave the earlier ones
+// written. Checking the target matters because nothing downstream ever would — `index`
+// renders the graph with unresolvable edges silently dropped.
+func checkEndpoints(tree string, groups []relatelib.Group) error {
+	nodes, err := indexgen.CollectNodes(tree)
+	if err != nil {
+		return fmt.Errorf("relate: %w", err)
+	}
+	want := make([]string, 0, 2*len(groups))
+	for i := range groups {
+		want = append(want, groups[i].Slug)
+		for _, e := range groups[i].Edges {
+			want = append(want, e.Target)
+		}
+	}
+	if unknown := related.UnknownSlugs(nodes, want); len(unknown) > 0 {
+		return fmt.Errorf("relate: no such skill under %s: %s",
+			tree, strings.Join(unknown, ", "))
+	}
 	return nil
 }
 
