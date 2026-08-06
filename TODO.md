@@ -147,6 +147,22 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       detects a selected group parent (`Exec == nil`) with a leftover positional
       after Parse and returns `"<cmd>: unknown subcommand \"x\""` (exit 1); a bare
       invocation still returns `ff.ErrNoExec` → exit 0.
+- [x] **Usage output was printed for every runtime error.** DONE (2026-08-06): the dispatcher
+      printed the selected command's whole help block for any error from an `exec` except
+      `ff.ErrNoExec` and `root.ExitError`, so a failed read, a bad JSON payload, a failed
+      write, or `relate`'s "no such skill" each buried the one useful line under a screen of
+      flags. New `root.UsageError` + `root.Usagef` mark the 16 genuine misuse-of-the-CLI
+      sites (wrong positional count, missing required flag, invalid flag value) across all 10
+      command packages; `cmd.Run` now prints usage for those and only those. The negative
+      condition ("not ErrNoExec and not ExitError") became a positive one, so it no longer
+      grows a clause per error kind. Marks go on the *producer* — `parseGates` marks its own
+      "unknown gate" and the existing `fmt.Errorf("verify: %w", err)` above it is untouched,
+      since `errors.As` sees through the wrap; that also keeps the two identically-wrapped
+      errors in `verify.exec` (usage vs runtime) distinguishable. `internal/lint.ParseCheck`
+      stays a plain error and is classified at the two command boundaries that call it,
+      because a subpackage must not import the command layer. `Usagef` returns the concrete
+      `UsageError` rather than `error` so `wrapcheck` does not demand that the constructor of
+      an error wrap something.
 - [ ] Drop the stale `pgx/v5 + sqlc` note in `RULES.md` (§ near line 648) —
       inherited template boilerplate; exegesis has no database code. `climax lint`
       is otherwise clean. (survey 2026-08-02)
@@ -204,10 +220,172 @@ exegesis already owns rather than adding a new tier.
       Re-running the same table is a no-op; a missing source skill errors. Chose a
       deterministic JSON edge table over `--interactive` (scriptable, testable). Replaces
       `update_index_structure.py`.
-- Cross-repo note: if skillsaw adopts the closed-loop structural pre-flight (see
-      `../skillsaw/TODO.md`), `internal/lint`'s redline/RIA checks become a
-      `skillet`-promotion candidate (a `skillet/redlines` or `speclint` extension) so both
-      tools gate structure identically instead of skillsaw shelling out to `exegesis verify`.
+- [x] **Promote `internal/lint`'s redline/RIA checks to skillet.** DONE (2026-08-06), code
+      complete but **not yet publishable — see the blocker below**. New `skillet/redlines`
+      with `Check(s *skill.Skill) []finding.Diagnostic` and an exported `MaxQuoteWords`,
+      mirroring `speclint.Frontmatter`; `internal/lint.checkRedlines` and its five helpers are
+      deleted and `Check` now calls `redlines.Check(s)`.
+      Chose a **new package over a `speclint` extension**: speclint encodes the agentskills.io
+      *spec* and changes when agentskills.io does; the red lines encode book2skill's *house
+      quality rules* and change when the methodology does. Different authorities, so merging
+      them would have coupled two independent change cadences.
+      Behaviour is byte-identical by construction — the diagnostic message strings were moved
+      verbatim, and `cmd/redlines_test.go` (which asserts on them through the CLI) passes
+      unchanged, which is the proof the move preserved behaviour.
+      **Blocker: exegesis requires `skillet v0.7.0` from the proxy, which has no `redlines`
+      package**, so `GOWORK=off go build ./...` fails. Local development is bridged by a
+      `go.work` (already gitignored, so nothing is committed) rather than a `replace` line that
+      would break every other consumer. To finish: commit and push skillet, tag `v0.8.0`, then
+      in exegesis `go get github.com/StevenACoffman/skillet@v0.8.0` and delete `go.work`.
+      Publishing is deliberately left undone — it is an outward-facing release, not a code change.
+      Follow-on: skillsaw is the second consumer that justified this (see `../skillsaw/TODO.md`);
+      wiring it up is its own item and is still open.
+
+## Gap-analysis re-examination (2026-08-06)
+
+Source: the revised `~/Documents/agent-orange/gemini_skills/processing/gap_analysis.md`,
+re-examining `relate`. One genuine gap; its stated mechanism was wrong, and the fix it
+proposes is in the wrong place.
+
+- [x] **Dangling edge targets are never caught — not by `relate`, `link`, `index`,
+      `lint`, or `verify`.** DONE (2026-08-06). Reproduced (2026-08-06): a table with
+      `{"from":"other-skill","kind":"depends-on","to":"user-lifecycles"}` against a tree
+      whose real slug is `user-lifecycle` → `relate` exits **0** and writes the bullet
+      into `other-skill/SKILL.md`; `verify` exits 1 only on unrelated test-prompts gates
+      and says nothing about the edge; `index` exits 0; `lint` says `ok`. The INDEX.md
+      Mermaid block renders both nodes and **no edge at all**, and the learning path is
+      unaffected — the edge is silently dropped by `related.prereqs`/`edgeLines`, which
+      both filter on `known[e.Target]` (`internal/related/graph.go:80,103`).
+      **The analysis claimed a later `verify`/`index` crash; there is no crash.** The
+      real failure is worse: the corruption is permanent and invisible, so a book's graph
+      quietly loses edges nobody knows are missing.
+      **Do NOT take the proposed fix** (`relatelib.Parse` accepting `tree` and stat-ing
+      both endpoints): it breaks Parse's documented purity ("bytes in, values out", so the
+      command owns I/O — `internal/relate/relate.go:1-4`), and it misses the same hole in
+      `link` (which never checks `--to` either, `cmd/link/link.go:74-90`) and every
+      hand-edited `## Related skills` section. Two-part fix instead:
+      1. **A graph-integrity check in `verify` (and a warning from `index`)** that reports
+         every edge whose target is not a discovered slug. This is the load-bearing half —
+         it catches edges already on disk regardless of who wrote them, and `indexgen`
+         already has the full slug set in hand.
+      2. **A pre-write target-existence check in the `relate` and `link` execs** (not in
+         `Parse`), so a typo fails fast at the point of authorship instead of at the next
+         verify. Keep the check in the command layer, where the tree path already lives.
+      Ordering note: (1) alone closes the exposure; (2) is the ergonomic add-on. If
+      `internal/related` is ever promoted to `skillet/related` (see the offload candidates
+      above), the integrity check should travel with it.
+      **As built:** a pure core in `internal/related` — `DanglingEdges(nodes)` (the exact
+      complement of the `known[e.Target]` filter it sits beside, so the two cannot drift)
+      and `UnknownSlugs(nodes, want)` for the pre-write case. `collectNodes` was exported
+      as `indexgen.CollectNodes` and is now the single tree walk behind `index`, `verify`,
+      `relate`, and `link`, so a graph report names exactly what INDEX.md would drop.
+      `verify` gained a tree-scope `checkGraph` mirroring `checkCatalog` (blocking, folded
+      into `structure_verified`, `graph: ` prefix) as part of the existing skills gate — no
+      new `--gates` name, since a dangling edge is a property of the relationships among
+      skills and callers cannot value that knob better than we can. `relate` validates both
+      endpoints of every edge **before the first write**, which also makes the batch atomic
+      (it used to commit group-by-group, so a bad target in the last group left the earlier
+      ones written). `link` warns instead of failing, because it is given only a skill
+      directory and must infer the tree as its parent; the warning names the tree it
+      checked, and `relate` — which is handed the tree explicitly — errors on the same
+      condition.
+      **Deviation from the plan above: no `index` warning.** It needed either a second tree
+      walk or an exported two-line `Render` wrapper for one caller, and it puts diagnostics
+      inside a renderer. Authorship-time (`relate`/`link`) plus gate-time (`verify`) already
+      cover the lifecycle.
+- [x] **Real trees' `## Related skills` sections do not parse — `index` renders an empty
+      graph for every book.** DONE (2026-08-06). Found while validating the check above, and a
+      bigger silent-drop than the dangling-target one. `ParseSection` requires the exact
+      heading `## Related skills` and the canonical bullet
+      `` - <kind>: `<target>` — <rationale> ``. Across `~/Documents/agent-orange/books/`:
+      36 files use the exact heading but write bullets as
+      `` - **composes-with** [`slug`](../slug/SKILL.md): rationale `` (bolded kind, markdown
+      link), and 28 more use the heading `## Related skills (Stage 3 Filling)`. Net result:
+      **zero edges in any real tree are visible to exegesis**, so every `INDEX.md` graph and
+      learning path is empty, and the new graph gate is trivially clean there. (The
+      `districts-ff/.claude/skills` deployment tree is worse still — mdformat rewrote its
+      `---` frontmatter delimiters to `______`, so `skill.Load` parses no frontmatter at
+      all.) Decide one of: (a) widen `ParseSection` to accept the bolded-kind/linked-target
+      form and a heading *prefix* match, or (b) treat the canonical form as the only
+      contract and normalize the books through `relate` once. (a) is more forgiving but
+      makes the wire format ambiguous for round-tripping; (b) keeps one format but needs a
+      migration pass. Until then the graph gate can only catch edges authored through
+      `relate`/`link`.
+      **Chose (a), narrowly: a tolerant reader, an unchanged canonical writer.** A full
+      survey found **five** bullet families, not two — bold-kind + linked backticked target
+      (120), a **reversed** `**slug** (kind):` form (59), bare-token-then-prose (36),
+      plain-kind + linked bare target (30), and plain-kind backticked incl. multi-target (20)
+      — plus the two headings. New `internal/related/dialects.go` reads all of them;
+      `findSection` matches the heading by prefix; `ParseSection` expands a multi-target
+      bullet to one edge per target and dedupes by (kind, target).
+      **Result: 223 Mermaid edges now render across the 32 book trees (was 0), 32/32 trees
+      have a non-empty graph, and 0 dangling edges are reported** — so the graph gate added
+      above stays clean and no book newly fails. The learning path also surfaced a real
+      `depends-on` cycle in site-reliability-engineering
+      (`fifty-percent-engineering-time-cap` ↔ `on-call-sustainability-model`) that was
+      invisible while the edges were unparsed.
+      Design notes worth keeping: (1) **`parseBullet` was deliberately NOT widened** — it is
+      the *writer's* matcher, and making it multi-target-aware would let an upsert of
+      ``(composes-with, a)`` onto `` - composes-with: `a`, `b` `` rewrite the line and
+      silently drop `b`. Tolerance lives only on the read path; verified that `relate` over a
+      legacy tree is idempotent, writes into the suffixed section rather than appending a
+      second one, and leaves legacy bullets intact. (2) **Targets are extracted anchored to
+      the head of the bullet, never by scanning the line** — a first draft manufactured edges
+      to `--force` and `--yes` out of backticked flags in a *rationale*, which the graph gate
+      then reported as dangling; that is now a regression test. (3) Tolerating a target
+      written as `[`slug`](../slug/SKILL.md)` does **not** contradict `lint` still flagging
+      the parent-escaping link: the reader takes the slug and ignores the path, and the two
+      answer different questions.
+      **Known limit (deliberate, evidence-based):** a bullet that names no resolvable skill
+      yields no edge and is not reported. All 5 such bullets in the corpus are intentional
+      prose about non-skill concepts (`- contrasts-with: (traditional ops team
+      headcount-scaling model)`), so a diagnostic would have been a 5-of-5 false positive.
+      The residual risk is that a genuinely typo'd bullet (`- depends-on: Four Golden
+      Signals`) stays invisible. Revisit only with a case that is not prose.
+- [x] **Normalize the books to the canonical bullet format.** DONE (2026-08-06) for every
+      dialect exegesis can map; see the residual below. New `related.Normalize` +
+      `exegesis normalize [--check] TREE`. The rewrite **substitutes only the lines it
+      understands** — a bullet whose target is prose, an intro sentence, fenced code, and
+      everything outside the section are copied through byte-identical — so it cannot discard
+      content it did not parse. `relate --edges` could not have done this: it appends canonical
+      bullets and leaves the legacy ones.
+      Two data-loss risks were found by measuring first and are covered by named regression
+      tests: **9 wrapped rationales** (continuation lines are now folded into the bullet, which
+      also fixed truncated rationales in the reader) and **5 prose bullets** that name no skill
+      (preserved verbatim; regenerating the section from parsed edges would have deleted them).
+      **Mid-implementation discovery: `## Related Skills` (capital S) appears in 189 files** —
+      my original survey grepped case-sensitively and missed it, so those sections were still
+      invisible. `isSectionHeading` is now case-insensitive, which took the visible graph from
+      **223 to 270 edges**.
+      Applied to `~/Documents/agent-orange/books`: **232 files rewritten**, all 32 trees pass
+      `normalize --check`, graph edges 270 before == 270 after, 0 dangling. Verified
+      information-preserving by a word-multiset comparison over all 242 skills, discounting the
+      heading suffix and the removed link paths: **0 words lost**.
+- [ ] **Decide the kind vocabulary for the sixth bullet dialect (250 bullets).** Found while
+      normalizing. A sixth dialect exists that the reader does not map:
+      `` - **[slug](../slug/SKILL.md)** — informs: why ``. Its kinds are a *different taxonomy*
+      from the three canonical ones — `informs` (93), `prerequisite for` (44), `combines` (40),
+      `depends on` (39), `relates` (22), `compares` (12). Only `depends on` is an unambiguous
+      spelling of `depends-on`. The rest need a semantic decision that is yours, not the
+      parser's: `combines`→`composes-with` and `compares`→`contrasts-with` are plausible, but
+      **`prerequisite for` looks like the inverse of `depends-on`** (A is prerequisite for B
+      means B depends-on A), so mapping it without flipping the direction would silently
+      reverse 44 edges, and `informs`/`relates` have no canonical equivalent at all. Decide the
+      mapping (including whether to add kinds) and the reader can absorb the dialect in an
+      afternoon; until then these 250 bullets stay invisible to `index` and untouched by
+      `normalize`.
+- [ ] **13 skills have two `## Related skills` sections.** Pre-existing in `HEAD`, not caused by
+      the normalization — typically a suffixed lowercase heading followed by a capital-S one.
+      `findSection` takes the first and stops at the next heading, so the second section's
+      bullets are invisible. Merge them in the content, or teach the reader to concatenate
+      every related-skills section in a file. Merging is a content edit, so it is left to you.
+- Cross-repo decision (no action yet): the same analysis proposes writing
+      `testprompts.DeriveChecks` output back into `test-prompts.json` on the skillsaw side.
+      exegesis is already half of that — `scaffold`'s `BuildTests` persists derived checks —
+      so if the write-back lands as a producer feature it belongs on `exegesis tests`
+      (`--derive-checks`, alongside `--scaffold`), filling checks for cases that have none.
+      Pick one home; see `../skillsaw/TODO.md` for the consumer-side framing and the
+      legacy-shape normalization caveat.
 
 ## Reasoning-toolkit survey (unified-thinking, 2026-08-05)
 

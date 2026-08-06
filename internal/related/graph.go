@@ -15,6 +15,14 @@ type Node struct {
 	Edges       []Edge
 }
 
+// DanglingEdge is one edge whose target is not a skill in the tree — an edge the
+// graph cannot render, so LearningPath and Mermaid drop it. Reporting it is the
+// only way the loss becomes visible.
+type DanglingEdge struct {
+	Source string // slug of the skill whose section holds the edge
+	Edge   Edge   // the edge itself, unknown target included
+}
+
 // LearningPath returns the node slugs in dependency order — every skill appears
 // after each skill it depends-on — tie-broken lexicographically by slug so the
 // output is deterministic. Only DependsOn edges to known slugs are followed.
@@ -71,6 +79,56 @@ func Mermaid(nodes []Node) string {
 		b.WriteString(line)
 	}
 	return b.String()
+}
+
+// DanglingEdges returns every edge in nodes whose target is not one of nodes' own
+// slugs — exactly the edges LearningPath and Mermaid silently drop — ordered by
+// source, then kind, then target so a report of them is deterministic.
+//
+// Ensures: the result is empty iff Mermaid renders an edge line for every edge in
+// nodes; it is pure.
+func DanglingEdges(nodes []Node) []DanglingEdge {
+	_, known := slugSet(nodes)
+	var out []DanglingEdge
+	for _, n := range nodes {
+		for _, e := range n.Edges {
+			if !known[e.Target] {
+				out = append(out, DanglingEdge{Source: n.Slug, Edge: e})
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Source != b.Source {
+			return a.Source < b.Source
+		}
+		if a.Edge.Kind != b.Edge.Kind {
+			return a.Edge.Kind < b.Edge.Kind
+		}
+		return a.Edge.Target < b.Edge.Target
+	})
+	return out
+}
+
+// UnknownSlugs returns the members of want that are not slugs in nodes,
+// deduplicated and sorted. It is the pre-write counterpart of DanglingEdges: a
+// command about to record an edge asks it whether the endpoints exist, instead of
+// discovering the answer from a later index that quietly omits them.
+//
+// Ensures: the result is empty iff every want is a slug in nodes; it is pure.
+func UnknownSlugs(nodes []Node, want []string) []string {
+	_, known := slugSet(nodes)
+	seen := make(map[string]bool, len(want))
+	var out []string
+	for _, w := range want {
+		if known[w] || seen[w] {
+			continue
+		}
+		seen[w] = true
+		out = append(out, w)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // prereqs returns the depends-on targets of n that are known slugs.

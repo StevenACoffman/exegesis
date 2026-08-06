@@ -4,7 +4,6 @@ package tests
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -50,7 +49,7 @@ judge. Refuses to overwrite an existing file.`,
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("tests: need at least one skill directory")
+		return root.Usagef("tests: need at least one skill directory")
 	}
 	if cfg.Scaffold {
 		return cfg.scaffold(args)

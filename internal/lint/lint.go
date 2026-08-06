@@ -1,10 +1,13 @@
 // Package lint validates a single Agent Skill against the agentskills.io spec
-// plus book2skill's body red-lines and the runtime-neutrality gate (E3). Check
+// plus book2skill's Quality Red Lines and the runtime-neutrality gate (E3). Check
 // is pure over an already-loaded skill; the caller does the file I/O and decides
-// the exit code from the returned diagnostics. The agentskills.io frontmatter
-// rules live in skillet's speclint so exegesis and skillsaw share one source of
-// truth; the checks below are exegesis-specific (folder match, body red-lines,
-// runtime neutrality, opt-in budgets).
+// the exit code from the returned diagnostics.
+//
+// Two families of rule live in skillet so exegesis and skillsaw share one source of
+// truth rather than drifting: the agentskills.io frontmatter rules (speclint) and
+// the Quality Red Lines (redlines). The checks below are the ones that remain
+// exegesis-specific: folder match, body links, runtime neutrality, and the opt-in
+// registry budgets.
 package lint
 
 import (
@@ -12,16 +15,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"unicode"
 
 	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/neutrality"
+	"github.com/StevenACoffman/skillet/redlines"
 	"github.com/StevenACoffman/skillet/skill"
 	"github.com/StevenACoffman/skillet/speclint"
 )
-
-// maxQuoteWords is the per-paragraph quotation limit enforced by the red lines.
-const maxQuoteWords = 150
 
 var (
 	reFence      = regexp.MustCompile("(?s)```.*?```|~~~.*?~~~")
@@ -58,7 +58,7 @@ func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
 		ds = append(ds, diagf("runtime-bound wording at SKILL.md:%d: %q", h.Line, h.Text))
 	}
 	if opts.Redlines {
-		ds = append(ds, checkRedlines(s)...)
+		ds = append(ds, redlines.Check(s)...)
 	}
 	return ds
 }
@@ -82,95 +82,6 @@ func ParseCheck(value string) (bool, error) {
 // the description states a trigger condition (#5). Pure over s.Body and
 // s.Description; code fences are ignored. The #4 test-prompts.json presence check
 // needs the filesystem, so the caller does it.
-func checkRedlines(s *skill.Skill) []finding.Diagnostic {
-	body := reFence.ReplaceAllString(s.Body, "")
-	var ds []finding.Diagnostic
-	ds = append(ds, checkSegments(body)...)
-	ds = append(ds, checkQuotes(body)...)
-	ds = append(ds, checkTrigger(s.Description)...)
-	return ds
-}
-
-// checkSegments flags any missing RIA segment. A segment is present when a "## "
-// heading's first token (its leading letters/digits, upper-cased) is the label.
-func checkSegments(body string) []finding.Diagnostic {
-	present := headingLabels(body)
-	var ds []finding.Diagnostic
-	for _, label := range []string{"R", "I", "A1", "A2", "E", "B"} {
-		if !present[label] {
-			ds = append(ds, diagf(
-				"redline: body is missing the %q RIA segment (needs R, I, A1, A2, E, B)", label))
-		}
-	}
-	return ds
-}
-
-// headingLabels returns the set of "## " heading first-token labels in body.
-func headingLabels(body string) map[string]bool {
-	labels := map[string]bool{}
-	for _, line := range strings.Split(body, "\n") {
-		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "## ")
-		if !ok {
-			continue
-		}
-		if label := leadingAlnum(strings.TrimSpace(rest)); label != "" {
-			labels[strings.ToUpper(label)] = true
-		}
-	}
-	return labels
-}
-
-// leadingAlnum returns the leading run of letters and digits in s.
-func leadingAlnum(s string) string {
-	for i, r := range s {
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-			return s[:i]
-		}
-	}
-	return s
-}
-
-// checkQuotes flags each contiguous blockquote whose word count exceeds the limit.
-func checkQuotes(body string) []finding.Diagnostic {
-	var ds []finding.Diagnostic
-	var quote []string
-	flush := func() {
-		if n := len(strings.Fields(strings.Join(quote, " "))); n > maxQuoteWords {
-			ds = append(
-				ds,
-				diagf("redline: a quotation is %d words, over the %d-word limit", n, maxQuoteWords),
-			)
-		}
-		quote = quote[:0]
-	}
-	for _, line := range strings.Split(body, "\n") {
-		if t := strings.TrimSpace(line); strings.HasPrefix(t, ">") {
-			quote = append(quote, strings.TrimSpace(strings.TrimPrefix(t, ">")))
-			continue
-		}
-		flush()
-	}
-	flush()
-	return ds
-}
-
-// checkTrigger flags a description that states no trigger condition — it contains
-// none of the cue phrases that signal when to invoke the skill. Heuristic: it
-// catches the "a skill about X" anti-pattern without over-flagging.
-func checkTrigger(description string) []finding.Diagnostic {
-	low := strings.ToLower(description)
-	for _, cue := range []string{"when", "whenever", "invoke", "reach for", "before ", "after "} {
-		if strings.Contains(low, cue) {
-			return nil
-		}
-	}
-	return []finding.Diagnostic{
-		diag(
-			"redline: description should state a trigger condition (when to use the skill), not just what it is",
-		),
-	}
-}
-
 // checkBudget applies the opt-in registry/flag limits: description and body word
 // budgets and required, non-empty sections. Zero limits and an empty section
 // list are no-ops.

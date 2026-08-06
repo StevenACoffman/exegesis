@@ -5,7 +5,6 @@ package lint
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,7 +70,7 @@ test-prompts.json. Exits non-zero if any skill has an error-severity finding.`,
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("lint: need at least one skill directory")
+		return root.Usagef("lint: need at least one skill directory")
 	}
 	opts, err := cfg.options()
 	if err != nil {
@@ -121,7 +120,9 @@ func (cfg *Config) options() (lintlib.Options, error) {
 	}
 	redlines, err := lintlib.ParseCheck(cfg.Check)
 	if err != nil {
-		return opts, fmt.Errorf("lint: %w", err)
+		// An invalid --check value is a usage error; internal/lint returns a plain
+		// error because a subpackage must not import the command layer to say so.
+		return opts, root.Usagef("lint: %w", err)
 	}
 	opts.Redlines = redlines
 	return opts, nil

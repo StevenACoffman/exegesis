@@ -4,7 +4,6 @@ package verify
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,9 +12,11 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/exegesis/cmd/root"
+	"github.com/StevenACoffman/exegesis/internal/indexgen"
 	lintlib "github.com/StevenACoffman/exegesis/internal/lint"
 	"github.com/StevenACoffman/exegesis/internal/overview"
 	"github.com/StevenACoffman/exegesis/internal/registry"
+	"github.com/StevenACoffman/exegesis/internal/related"
 	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/manifest"
 	"github.com/StevenACoffman/skillet/skill"
@@ -82,10 +83,14 @@ func New(parent *root.Config) *Config {
 and the test-prompts composition gate for every skill under TREE (default "."):
 each immediate subdirectory containing a SKILL.md.
 
+The skills gate also checks the relationship graph across the tree: every
+` + "`## Related skills`" + ` edge must point at a skill that exists, because
+` + "`index`" + ` silently drops an edge whose target it cannot find.
+
 --gates selects a subset: "overview" runs only the Stage-0 BOOK_OVERVIEW.md gate
-(and requires the file to exist); "skills" runs only the per-skill gates. The
-default (no --gates) runs both. Only a run that includes the skills gate writes
-skills-manifest.json.
+(and requires the file to exist); "skills" runs only the per-skill gates and the
+graph check. The default (no --gates) runs both. Only a run that includes the
+skills gate writes skills-manifest.json.
 
 With --registry, also enforce per-skill word budgets and required sections and
 check the discovered skills against the expected catalog.
@@ -107,7 +112,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	case 1:
 		tree = args[0]
 	default:
-		return errors.New("verify: expected at most one tree path")
+		return root.Usagef("verify: expected at most one tree path")
 	}
 	gates, err := parseGates(cfg.Gates)
 	if err != nil {
@@ -150,19 +155,22 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	}
 	redlines, err := lintlib.ParseCheck(cfg.Check)
 	if err != nil {
-		return false, fmt.Errorf("verify: %w", err)
+		// An invalid --check value is a usage error; internal/lint returns a plain
+		// error because a subpackage must not import the command layer to say so.
+		return false, root.Usagef("verify: %w", err)
 	}
 	opts.Redlines = redlines
 	reports, err := verifySkills(tree, opts)
 	if err != nil {
 		return false, err
 	}
-	catalogProblems := checkCatalog(expected, reports)
-	verified := overviewPass && len(catalogProblems) == 0 && allPass(reports)
+	treeProblems := checkCatalog(expected, reports)
+	treeProblems = append(treeProblems, checkGraph(tree)...)
+	verified := overviewPass && len(treeProblems) == 0 && allPass(reports)
 	if err := cfg.writeManifest(tree, reports, verified); err != nil {
 		return false, err
 	}
-	cfg.renderSkills(catalogProblems, reports)
+	cfg.renderSkills(treeProblems, reports)
 	return verified, nil
 }
 
@@ -184,7 +192,7 @@ func parseGates(s string) (gateSet, error) {
 		case "skills":
 			g.skills = true
 		default:
-			return gateSet{}, fmt.Errorf("unknown gate %q (known: overview, skills)", name)
+			return gateSet{}, root.Usagef("unknown gate %q (known: overview, skills)", name)
 		}
 	}
 	return g, nil
@@ -232,6 +240,31 @@ func checkCatalog(expected []string, reports []skillReport) []string {
 				fmt.Sprintf("catalog: unexpected skill %q not in registry", slug),
 			)
 		}
+	}
+	return problems
+}
+
+// checkGraph reports every `## Related skills` edge under tree whose target is not
+// a skill in the tree. Those edges are the one defect no other gate can see: lint
+// is per-skill and has no tree to compare against, and `index` renders the graph
+// with them silently dropped, so without this check a typo'd target is written
+// once and then invisible forever.
+//
+// A tree whose skills cannot all be loaded is already failing the per-skill gates,
+// so an unreadable tree is reported as a check that did not run rather than
+// mistaken for a clean graph.
+func checkGraph(tree string) []string {
+	nodes, err := indexgen.CollectNodes(tree)
+	if err != nil {
+		return []string{fmt.Sprintf("graph: not checked: %v", err)}
+	}
+	dangling := related.DanglingEdges(nodes)
+	problems := make([]string, 0, len(dangling))
+	for _, d := range dangling {
+		problems = append(problems, fmt.Sprintf(
+			"graph: %s: %s `%s` — no such skill in the tree (INDEX.md drops this edge)",
+			d.Source, d.Edge.Kind, d.Edge.Target,
+		))
 	}
 	return problems
 }
@@ -319,8 +352,10 @@ func (cfg *Config) renderOverview(problems []string) {
 	}
 }
 
-func (cfg *Config) renderSkills(catalogProblems []string, reports []skillReport) {
-	for _, p := range catalogProblems {
+// renderSkills reports the tree-scope problems (catalog, graph) first, then one
+// block per skill.
+func (cfg *Config) renderSkills(treeProblems []string, reports []skillReport) {
+	for _, p := range treeProblems {
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s\n", p)
 	}
 	for i := range reports {

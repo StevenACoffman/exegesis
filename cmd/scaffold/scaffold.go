@@ -77,10 +77,10 @@ The schema is {"skills": [{slug, description, related?, test_prompts?}]}.`,
 // already parsed. It returns ExitError(1) if any skill failed its gates.
 func (cfg *Config) exec(_ context.Context, _ []string) error {
 	if cfg.Schema == "" {
-		return errors.New("scaffold: --schema is required")
+		return root.Usagef("scaffold: --schema is required")
 	}
 	if cfg.Output == "" {
-		return errors.New("scaffold: --output-dir is required")
+		return root.Usagef("scaffold: --output-dir is required")
 	}
 	schema, err := loadSchema(cfg.Schema)
 	if err != nil {

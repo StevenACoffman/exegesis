@@ -28,7 +28,7 @@ func Path(tree string) string {
 // the generated block preserved. title/author override the header derived from
 // BOOK_OVERVIEW.md (empty means derive).
 func Generate(tree, title, author string) (string, error) {
-	nodes, err := collectNodes(tree)
+	nodes, err := CollectNodes(tree)
 	if err != nil {
 		return "", err
 	}
@@ -36,20 +36,14 @@ func Generate(tree, title, author string) (string, error) {
 	return related.Render(header(tree, title, author), nodes, related.Split(existing)), nil
 }
 
-// header resolves the INDEX.md heading: the title/author overrides, falling back
-// to BOOK_OVERVIEW.md's first heading for the title.
-func header(tree, title, author string) related.Header {
-	if title == "" {
-		if t, err := naming.TitleFromFile(filepath.Join(tree, "BOOK_OVERVIEW.md")); err == nil {
-			title = t
-		}
-	}
-	return related.Header{Title: title, Author: author}
-}
-
-// collectNodes loads every skill under tree into a related.Node carrying its
-// slug, title, description, and parsed related-skill edges.
-func collectNodes(tree string) ([]related.Node, error) {
+// CollectNodes loads every skill under tree into a related.Node carrying its slug,
+// title, description, and parsed related-skill edges. It is the one tree walk
+// behind `index`, `verify`, `relate`, and `link`, so every command keys skills by
+// the same slug and a graph check reports exactly what INDEX.md would drop.
+//
+// A skill whose SKILL.md cannot be loaded is an error, not a gap in the graph:
+// silently omitting it would make an edge to it look dangling.
+func CollectNodes(tree string) ([]related.Node, error) {
 	dirs, err := skill.Discover(tree)
 	if err != nil {
 		return nil, fmt.Errorf("discover skills: %w", err)
@@ -69,6 +63,17 @@ func collectNodes(tree string) ([]related.Node, error) {
 		})
 	}
 	return nodes, nil
+}
+
+// header resolves the INDEX.md heading: the title/author overrides, falling back
+// to BOOK_OVERVIEW.md's first heading for the title.
+func header(tree, title, author string) related.Header {
+	if title == "" {
+		if t, err := naming.TitleFromFile(filepath.Join(tree, "BOOK_OVERVIEW.md")); err == nil {
+			title = t
+		}
+	}
+	return related.Header{Title: title, Author: author}
 }
 
 // readFile returns the file's contents, or "" when it does not exist.

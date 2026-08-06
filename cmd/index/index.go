@@ -7,7 +7,6 @@ package index
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
@@ -70,7 +69,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	case 1:
 		tree = args[0]
 	default:
-		return errors.New("index: expected at most one tree path")
+		return root.Usagef("index: expected at most one tree path")
 	}
 	out, err := indexgen.Generate(tree, cfg.Title, cfg.Author)
 	if err != nil {
