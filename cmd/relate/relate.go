@@ -6,7 +6,6 @@ package relate
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -62,10 +61,10 @@ skill to cold-start a book's graph.`,
 // regenerates INDEX.md. Flags are already parsed.
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) != 1 {
-		return errors.New("relate: need exactly one tree directory")
+		return root.Usagef("relate: need exactly one tree directory")
 	}
 	if cfg.Edges == "" {
-		return errors.New("relate: --edges is required")
+		return root.Usagef("relate: --edges is required")
 	}
 	tree := args[0]
 	data, err := os.ReadFile(cfg.Edges)

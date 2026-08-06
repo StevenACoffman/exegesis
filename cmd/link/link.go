@@ -6,7 +6,6 @@ package link
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -55,7 +54,7 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) != 1 {
-		return errors.New("link: need exactly one skill directory")
+		return root.Usagef("link: need exactly one skill directory")
 	}
 	edge, err := cfg.edge()
 	if err != nil {
@@ -83,14 +82,14 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 func (cfg *Config) edge() (related.Edge, error) {
 	kind := related.Kind(cfg.Kind)
 	if !kind.Valid() {
-		return related.Edge{}, fmt.Errorf(
+		return related.Edge{}, root.Usagef(
 			"link: --kind must be depends-on, contrasts-with, or composes-with (got %q)", cfg.Kind)
 	}
 	if cfg.To == "" {
-		return related.Edge{}, errors.New("link: --to is required")
+		return related.Edge{}, root.Usagef("link: --to is required")
 	}
 	if cfg.Rationale == "" {
-		return related.Edge{}, errors.New("link: --rationale is required")
+		return related.Edge{}, root.Usagef("link: --rationale is required")
 	}
 	return related.Edge{Kind: kind, Target: skill.Slug(cfg.To), Rationale: cfg.Rationale}, nil
 }

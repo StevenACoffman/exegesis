@@ -50,7 +50,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	// register new commands here
 
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("EXEGESIS")); err != nil {
-		_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command))
+		printUsage(stderr, r.Command)
 		return fmt.Errorf("parse: %w", err)
 	}
 
@@ -60,20 +60,30 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	// A bare invocation has no leftover arg and is left to the ErrNoExec path.
 	if sel := r.Command.GetSelected(); sel.Exec == nil {
 		if rest := sel.Flags.GetArgs(); len(rest) > 0 {
-			_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(sel))
+			printUsage(stderr, sel)
 			return fmt.Errorf("%s: unknown subcommand %q", sel.Name, rest[0])
 		}
 	}
 
 	if err := r.Command.Run(ctx); err != nil {
-		// Don't print usage help for ErrNoExec (no subcommand given) or
-		// ExitError (command already reported its own outcome).
-		var exitErr root.ExitError
-		if !errors.Is(err, ff.ErrNoExec) && !errors.As(err, &exitErr) {
-			_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command.GetSelected()))
+		// Print usage only for a misuse of the command line, which a command reports
+		// as a root.UsageError. Every other failure — a bad file, a failed write, a
+		// gate outcome (ExitError), no subcommand at all (ErrNoExec) — happened on a
+		// correct invocation, so a flag list is noise in front of the real message.
+		var usageErr root.UsageError
+		if errors.As(err, &usageErr) {
+			printUsage(stderr, r.Command.GetSelected())
 		}
 		return err
 	}
 
 	return nil
+}
+
+// printUsage writes cmd's help block to w, the response to a misuse of the command
+// line. The caller picks the command whose usage is relevant: the root on a parse
+// failure, the group parent on an unknown subcommand, the selected command on a
+// usage error from its exec.
+func printUsage(w io.Writer, cmd *ff.Command) {
+	_, _ = fmt.Fprintf(w, "\n%s\n", ffhelp.Command(cmd))
 }

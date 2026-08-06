@@ -4,7 +4,6 @@ package verify
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -113,7 +112,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	case 1:
 		tree = args[0]
 	default:
-		return errors.New("verify: expected at most one tree path")
+		return root.Usagef("verify: expected at most one tree path")
 	}
 	gates, err := parseGates(cfg.Gates)
 	if err != nil {
@@ -156,7 +155,9 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	}
 	redlines, err := lintlib.ParseCheck(cfg.Check)
 	if err != nil {
-		return false, fmt.Errorf("verify: %w", err)
+		// An invalid --check value is a usage error; internal/lint returns a plain
+		// error because a subpackage must not import the command layer to say so.
+		return false, root.Usagef("verify: %w", err)
 	}
 	opts.Redlines = redlines
 	reports, err := verifySkills(tree, opts)
@@ -191,7 +192,7 @@ func parseGates(s string) (gateSet, error) {
 		case "skills":
 			g.skills = true
 		default:
-			return gateSet{}, fmt.Errorf("unknown gate %q (known: overview, skills)", name)
+			return gateSet{}, root.Usagef("unknown gate %q (known: overview, skills)", name)
 		}
 	}
 	return g, nil

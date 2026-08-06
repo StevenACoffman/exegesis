@@ -9,7 +9,6 @@ package distill
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -88,10 +87,10 @@ reply to its response_path and re-runs the printed "resume" command. With
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) != 1 {
-		return errors.New("distill: need exactly one book file")
+		return root.Usagef("distill: need exactly one book file")
 	}
 	if cfg.Title == "" {
-		return errors.New("distill: --title is required")
+		return root.Usagef("distill: --title is required")
 	}
 	bookPath := args[0]
 	tree := filepath.Join(cfg.Out, skill.Slug(cfg.Title))
@@ -128,7 +127,7 @@ func (cfg *Config) drive(
 		}
 		return out, nil
 	default:
-		return distill.Outcome{}, fmt.Errorf(
+		return distill.Outcome{}, root.Usagef(
 			"distill: unknown --driver %q (known: agent, http)",
 			cfg.Driver,
 		)
@@ -138,7 +137,8 @@ func (cfg *Config) drive(
 // answerer builds the http driver's model client from the flags.
 func (cfg *Config) answerer() (distill.Answerer, error) {
 	if cfg.APIKey == "" {
-		return nil, errors.New("distill: --driver http requires --api-key (or EXEGESIS_API_KEY)")
+		return nil, root.Usagef(
+			"distill: --driver http requires --api-key (or EXEGESIS_API_KEY)")
 	}
 	return &distill.HTTPAnswerer{
 		Client:   &http.Client{Timeout: 2 * time.Minute},

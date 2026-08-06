@@ -14,6 +14,19 @@ import (
 // default "error: ..." printer.
 type ExitError int
 
+// UsageError marks an error as a misuse of the command line — a wrong argument
+// count, a missing required flag, an invalid flag value — for which printing the
+// command's usage is the helpful response. The dispatcher prints usage for these
+// and only these: after a runtime failure (an unreadable file, a failed write, a
+// data file whose contents are wrong) the invocation itself was correct, so a flag
+// list is noise in front of the line that matters.
+//
+// Wrapping preserves the mark, so a command that already wraps an inner error needs
+// no change: errors.As finds a UsageError through fmt.Errorf("cmd: %w", err). Mark
+// the error where the knowledge is — the function that knows a flag value is invalid
+// — rather than at the call site that wraps it.
+type UsageError struct{ Err error }
+
 // Config holds shared I/O writers and the root ff.Command.
 // All subcommand configs embed *Config to inherit these.
 type Config struct {
@@ -25,6 +38,29 @@ type Config struct {
 }
 
 func (e ExitError) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
+
+// Error reports the wrapped message. The zero UsageError is constructible by any
+// caller, so it describes itself rather than panicking on a nil Err — a panic while
+// reporting a failure would bury the failure it was reporting.
+func (e UsageError) Error() string {
+	if e.Err == nil {
+		return "usage error"
+	}
+	return e.Err.Error()
+}
+
+// Unwrap exposes the underlying error so errors.Is/As reach past the marker.
+func (e UsageError) Unwrap() error { return e.Err }
+
+// Usagef returns a UsageError whose message is formatted as fmt.Errorf does, so a
+// %w verb still wraps an underlying error.
+//
+// It returns the concrete UsageError rather than error so that callers returning it
+// are not reported by wrapcheck: there is no external error here to wrap, since this
+// is the constructor of the error itself.
+func Usagef(format string, args ...any) UsageError {
+	return UsageError{Err: fmt.Errorf(format, args...)}
+}
 
 // New returns a new root Config with the given I/O writers.
 func New(stdin io.Reader, stdout, stderr io.Writer) *Config {
