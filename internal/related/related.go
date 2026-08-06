@@ -1,7 +1,8 @@
 // Package related is the pure model behind `exegesis link` and `exegesis index`:
 // the related-skill edges recorded in a skill's `## Related skills` section, plus
-// the parse/serialize of that section (related.go), the graph those edges form
-// (graph.go), and the INDEX.md rendered from them (index.go). Every function is
+// the parse/serialize of that section (related.go), the older bullet dialects still
+// tolerated on read (dialects.go), the graph those edges form (graph.go), and the
+// INDEX.md rendered from them (index.go). Every function is
 // pure — text in, text out, no I/O and no globals — so the commands own the file
 // reads and writes and decide exit codes.
 package related
@@ -39,6 +40,23 @@ type Edge struct {
 	Rationale string
 }
 
+// edgeKey identifies a relationship for deduplication. The rationale is
+// deliberately excluded: two bullets naming the same kind and target are one edge,
+// whichever words each chose to explain it.
+type edgeKey struct {
+	kind   Kind
+	target string
+}
+
+// logicalBullet is one bullet of a `## Related skills` section together with the
+// line span it occupies. The span lets Normalize replace exactly the lines a bullet
+// came from, so a rewrite never has to reconstruct the lines it did not understand.
+type logicalBullet struct {
+	text  string // the bullet with any continuation lines folded into one line
+	start int    // index of the bullet's first line
+	end   int    // one past the index of its last line
+}
+
 // Valid reports whether k is one of the three known kinds.
 func (k Kind) Valid() bool {
 	switch k {
@@ -57,8 +75,18 @@ func Bullet(e Edge) string {
 }
 
 // ParseSection returns the edges in md's `## Related skills` section, in file
-// order, skipping any bullet whose kind is not Valid. md may be a full SKILL.md
-// or just its body. Bullets inside code fences are ignored.
+// order, skipping any bullet whose kind is not Valid or that names no skill. md may
+// be a full SKILL.md or just its body. Bullets inside code fences are ignored.
+//
+// Reading is tolerant of every bullet dialect found in real trees (see
+// dialects.go), so a section written before the canonical format settled still
+// yields its edges instead of being silently ignored. A bullet naming several
+// targets yields one edge per target.
+//
+// Edges are deduplicated by (Kind, Target), first occurrence winning: the section
+// expresses a set of relationships, and once legacy and canonical bullets coexist in
+// one section — which happens the first time `relate` runs over legacy content — the
+// same relationship would otherwise be reported twice.
 func ParseSection(md string) []Edge {
 	lines := strings.Split(md, "\n")
 	head, end, found := findSection(lines)
@@ -66,13 +94,18 @@ func ParseSection(md string) []Edge {
 		return nil
 	}
 	var edges []Edge
-	inFence := false
-	for _, line := range lines[head+1 : end] {
-		if isFence(strings.TrimSpace(line)) {
-			inFence = !inFence
+	seen := make(map[edgeKey]bool)
+	for _, b := range sectionBullets(lines, head, end) {
+		parsed, ok := readBullet(b.text)
+		if !ok {
 			continue
 		}
-		if e, ok := parseBullet(line); ok && !inFence {
+		for _, e := range parsed {
+			key := edgeKey{kind: e.Kind, target: e.Target}
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
 			edges = append(edges, e)
 		}
 	}
@@ -139,7 +172,7 @@ func findSection(lines []string) (head, end int, found bool) {
 			continue
 		}
 		switch {
-		case head < 0 && trimmed == sectionHeading:
+		case head < 0 && isSectionHeading(trimmed):
 			head = i
 		case head >= 0 && isHeading(trimmed):
 			return head, i, true
@@ -206,6 +239,28 @@ func parseBullet(line string) (Edge, bool) {
 	}
 	rationale = strings.TrimPrefix(strings.TrimSpace(rationale), "—")
 	return Edge{Kind: kind, Target: target, Rationale: strings.TrimSpace(rationale)}, true
+}
+
+// isSectionHeading reports whether a trimmed line opens the related-skills
+// section. Matching is by prefix and case-insensitive, because a section exegesis
+// cannot find is a section whose edges it silently drops, and real trees vary the
+// heading in both ways: "## Related Skills" appears in 189 files and
+// "## Related skills (Stage 3 Filling)" in 49.
+//
+// The level is still exact, so a deeper "### Related skills" is just a heading, and
+// a suffix must start at a word boundary, so "## Related skillset" is not a match.
+//
+// Upsert therefore writes into a variant section when one exists, rather than
+// appending a second canonical section below it.
+func isSectionHeading(trimmed string) bool {
+	if len(trimmed) < len(sectionHeading) {
+		return false
+	}
+	if !strings.EqualFold(trimmed[:len(sectionHeading)], sectionHeading) {
+		return false
+	}
+	rest := trimmed[len(sectionHeading):]
+	return rest == "" || strings.HasPrefix(rest, " ")
 }
 
 // isHeading reports whether a trimmed line is an ATX heading.
