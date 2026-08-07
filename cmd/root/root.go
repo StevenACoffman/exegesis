@@ -79,22 +79,14 @@ func New(stdin io.Reader, stdout, stderr io.Writer) *Config {
 		Usage: "exegesis <SUBCOMMAND> ...",
 		ShortHelp: "distill a book into a tree of Agent Skills and gate " +
 			"their structure",
+		// No hand-written command list here: ff renders SUBCOMMANDS from the
+		// registered commands, and the copy that used to sit in this text had already
+		// drifted -- it omitted scaffold, relate and normalize, and described flags
+		// tests no longer had. One list that cannot go stale beats two that can.
 		LongHelp: "exegesis is the deterministic pipeline/gate CLI behind the " +
-			"book2skill skill.\n\n" +
-			"Implemented gates:\n" +
-			"  lint     validate a skill's frontmatter, body links, and " +
-			"runtime-neutrality\n" +
-			"  tests    check a skill's test-prompts.json composition; " +
-			"--scaffold writes a starter\n" +
-			"  verify   run every gate over a skill tree and emit " +
-			"skills-manifest.json\n" +
-			"  link     record a related-skill edge in a skill's " +
-			"`## Related skills` section\n" +
-			"  index    regenerate INDEX.md from every skill's " +
-			"`## Related skills` section\n" +
-			"  distill  run the book2skill pipeline as a resumable " +
-			"agent-driven loop (Stage 0 so far)\n" +
-			"  version  print version information",
+			"book2skill skill. It distills a book into a tree of Agent Skills and " +
+			"gates their structure; see SUBCOMMANDS below, and\n" +
+			"\"exegesis <SUBCOMMAND> -h\" for what each one does.",
 	}
 	return &cfg
 }
