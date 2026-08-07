@@ -180,16 +180,21 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       the block before the parse is attempted, so `s.Body` is intact and its defects are real.
       Suppressing those too would make an author fix the YAML and lint again just to be told
       what could have been said the first time.
-- [ ] **`redlines.Check` still reports a missing trigger on an unparsed description.**
-      Measured after the fix above: `exegesis lint --check redlines` on that same skill emits
-      three diagnostics — the YAML error, a genuine 219-word quotation, and
-      `redline: description should state a trigger condition`. The third is false for the same
-      reason the name mismatch was: `checkTrigger` reads `s.Description`, which is empty
-      because nothing could be parsed, not because the author omitted a trigger.
-      It cannot be fixed from here — `redlines.Check` is skillet's. It is a small change
-      there, though: `redlines` already takes a `*skill.Skill`, so it can skip the
-      description-derived check when `s.FrontmatterErr != nil` exactly as `speclint` and this
-      package now do. The body-derived red lines must keep running.
+- [x] **`redlines.Check` reported a missing trigger on an unparsed description.** DONE
+      (2026-08-06) upstream, taken here by bumping to skillet v0.10.0; no code change on this
+      side. `checkTrigger` read `s.Description`, which is empty when the YAML failed to parse,
+      so it demanded a trigger condition in prose the author had written and the parser could
+      not reach.
+      Only that check is guarded upstream. `checkSegments` and `checkQuotes` read the body,
+      which `splitFrontmatter` produces before the parse is attempted, so a blanket
+      suppression would have hidden the genuine 219-word quotation on this very skill.
+      This closes a fix spanning four packages: `skill` records the parse error, `speclint`
+      reports it as itself, `internal/lint` here stops comparing a name it could not read,
+      and `redlines` stops asking for a trigger. Measured end state on
+      `books/site-reliability-engineering/blameless-postmortem-process`, whose frontmatter
+      carries a quoted scalar followed by unquoted text: `lint` reports **1** diagnostic,
+      `lint --check redlines` reports **2** — the YAML error at `[10:45]` and that real
+      quotation. It began at four, two of which were consequences of the one syntax error.
 - [ ] Drop the stale `pgx/v5 + sqlc` note in `RULES.md` (§ near line 648) —
       inherited template boilerplate; exegesis has no database code. `climax lint`
       is otherwise clean. (survey 2026-08-02)
