@@ -99,7 +99,7 @@ func TestUpsertCreatesSection(t *testing.T) {
 	if !changed {
 		t.Fatal("expected changed=true when creating the section")
 	}
-	if !strings.Contains(out, "## Related skills") {
+	if !strings.Contains(out, "## Related Skills") {
 		t.Errorf("section heading missing:\n%s", out)
 	}
 	if !strings.HasPrefix(out, md[:len(md)-1]) { // original preserved (minus its trailing newline)
