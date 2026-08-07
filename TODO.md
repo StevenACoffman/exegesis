@@ -180,16 +180,17 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       the block before the parse is attempted, so `s.Body` is intact and its defects are real.
       Suppressing those too would make an author fix the YAML and lint again just to be told
       what could have been said the first time.
-- [ ] **`redlines.Check` still reports a missing trigger on an unparsed description.**
-      Measured after the fix above: `exegesis lint --check redlines` on that same skill emits
-      three diagnostics — the YAML error, a genuine 219-word quotation, and
-      `redline: description should state a trigger condition`. The third is false for the same
-      reason the name mismatch was: `checkTrigger` reads `s.Description`, which is empty
-      because nothing could be parsed, not because the author omitted a trigger.
-      It cannot be fixed from here — `redlines.Check` is skillet's. It is a small change
-      there, though: `redlines` already takes a `*skill.Skill`, so it can skip the
-      description-derived check when `s.FrontmatterErr != nil` exactly as `speclint` and this
-      package now do. The body-derived red lines must keep running.
+- [ ] **Take the `redlines` trigger guard once skillet releases it.** The false
+      `redline: description should state a trigger condition` on a skill whose frontmatter
+      did not parse is **fixed in skillet** (2026-08-06, unreleased): `redlines.Check` now
+      guards `checkTrigger` on `FrontmatterErr`, so it stops demanding a trigger of prose the
+      author did write. Only that check is guarded — `checkSegments` and `checkQuotes` read
+      the body, which `splitFrontmatter` produces before the parse is attempted, and
+      suppressing them would have hidden the genuine 219-word quotation on this very skill.
+      Verified through a `go.work`: `lint --check redlines` on
+      `books/site-reliability-engineering/blameless-postmortem-process` goes 3 diagnostics → 2.
+      **Open here until a skillet release carries it**, because exegesis pins v0.9.0, which
+      does not have it. Then bump and this closes with no code change on this side.
 - [ ] Drop the stale `pgx/v5 + sqlc` note in `RULES.md` (§ near line 648) —
       inherited template boilerplate; exegesis has no database code. `climax lint`
       is otherwise clean. (survey 2026-08-02)
