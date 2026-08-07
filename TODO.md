@@ -3,8 +3,9 @@
 `exegesis` is the deterministic pipeline/gate CLI behind the **book2skill** skill:
 it distills a book into a tree of Agent Skills and gates each one. Implemented:
 `version`, `lint` (+ `--check redlines`), `tests`, `verify` (+ `--gates`,
-`--check redlines`), `link`, `index`, and `distill` (agent + http drivers) — the
-whole pipeline. It is a pure CLI tool (Pattern B, `ff/v4`):
+`--check redlines`), `link`, `relate`, `index`, `normalize`, `scaffold`, and
+`distill` (agent + http drivers) — the whole pipeline. It is a pure CLI tool
+(Pattern B, `ff/v4`):
 `main.go` at the root, one command per package under `cmd/`, pure logic under
 `internal/`.
 
@@ -16,7 +17,13 @@ whole pipeline. It is a pure CLI tool (Pattern B, `ff/v4`):
 `test-prompts.json` JSON contract (below) — the seam is that file plus the
 `skills-manifest.json` emitted by `exegesis verify`.
 
-## Seam-closing work (this pass)
+The structural rules themselves are shared as code, not just as files:
+`skillet/speclint` holds the agentskills.io frontmatter spec and
+`skillet/redlines` — promoted out of this repo's `internal/lint` once skillsaw
+became a second consumer — holds the Quality Red Lines. exegesis gates a tree on
+them; skillsaw rejects an edit on them. Neither can drift by hand.
+
+## Seam-closing work (2026-08-03, complete)
 
 - [x] **E1 — Build the pipeline commands at all.** DONE: `lint`, `tests`,
       `verify` implemented as ff/v4 command packages over pure `internal/`
@@ -163,6 +170,26 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       because a subpackage must not import the command layer. `Usagef` returns the concrete
       `UsageError` rather than `error` so `wrapcheck` does not demand that the constructor of
       an error wrap something.
+- [x] **Skip the name/folder check when the frontmatter did not parse.** DONE (2026-08-06).
+      skillet v0.9.0 records `Skill.FrontmatterErr`, so `internal/lint.Check` now compares the
+      name only when there was a name to read. On the book skill with the malformed
+      `source_book:` line, `lint` went from four diagnostics — two of them consequences of the
+      one YAML error — to **one**, naming `[10:45]`.
+      The guard is deliberately narrow: only checks that read a field *out of the parsed
+      block* are suppressed. The body checks still run, because `splitFrontmatter` separates
+      the block before the parse is attempted, so `s.Body` is intact and its defects are real.
+      Suppressing those too would make an author fix the YAML and lint again just to be told
+      what could have been said the first time.
+- [ ] **`redlines.Check` still reports a missing trigger on an unparsed description.**
+      Measured after the fix above: `exegesis lint --check redlines` on that same skill emits
+      three diagnostics — the YAML error, a genuine 219-word quotation, and
+      `redline: description should state a trigger condition`. The third is false for the same
+      reason the name mismatch was: `checkTrigger` reads `s.Description`, which is empty
+      because nothing could be parsed, not because the author omitted a trigger.
+      It cannot be fixed from here — `redlines.Check` is skillet's. It is a small change
+      there, though: `redlines` already takes a `*skill.Skill`, so it can skip the
+      description-derived check when `s.FrontmatterErr != nil` exactly as `speclint` and this
+      package now do. The body-derived red lines must keep running.
 - [ ] Drop the stale `pgx/v5 + sqlc` note in `RULES.md` (§ near line 648) —
       inherited template boilerplate; exegesis has no database code. `climax lint`
       is otherwise clean. (survey 2026-08-02)
@@ -182,6 +209,13 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       `internal/overview` Markdown parse → a future `skillet/markdown` adoption (converge
       on goldmark), and `internal/related` → `skillet/related` if a 2nd consumer
       (skillsaw/canonizer skill-graphs) appears.
+
+- [x] Bump skillet **v0.7.0 → v0.9.0.** DONE (2026-08-06), go.mod/go.sum only, twice.
+      **v0.8.0** is the release carrying `skillet/redlines`, promoted *out of this repo* once
+      skillsaw became the second consumer that justified it; `internal/lint.checkRedlines`
+      and its five helpers were deleted in favour of it. **v0.9.0** adds
+      `Skill.FrontmatterErr`, which is what let `lint` stop reporting a name/folder mismatch
+      on a skill whose name could not be read.
 
 ## Convenience gaps (from the gemini_skills gap analysis, 2026-08-05)
 
