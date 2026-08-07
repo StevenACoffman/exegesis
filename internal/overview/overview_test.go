@@ -80,7 +80,7 @@ func TestCheckFailures(t *testing.T) {
 					1,
 				)
 			},
-			wantSub: "One-sentence summary",
+			wantSub: "One-Sentence Summary",
 		},
 		{
 			name:    "too few skeleton",

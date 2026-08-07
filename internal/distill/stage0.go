@@ -93,6 +93,11 @@ func renderOverview(r *Stage0Response) string {
 	if title == "" {
 		title = "Book"
 	}
+	// Section titles are title case: `rumdl` MD063 rewrites them otherwise, and the
+	// overview gate lowercases before matching (overview.headingKey), so the written
+	// form is free to satisfy the formatter. The book title interpolated here is not
+	// touched -- it is the author's, and case-folding data to please a linter would be
+	// a worse defect than the lint it silenced.
 	fmt.Fprintf(&b, "# %s — Book Overview\n\n", title)
 	fmt.Fprintf(
 		&b,
@@ -101,13 +106,13 @@ func renderOverview(r *Stage0Response) string {
 		r.Year,
 		r.Genre,
 	)
-	fmt.Fprintf(&b, "## One-sentence summary\n\n%s\n\n", r.Summary)
+	fmt.Fprintf(&b, "## One-Sentence Summary\n\n%s\n\n", r.Summary)
 	bulletSection(&b, "Skeleton", r.Skeleton)
-	bulletSection(&b, "Key terms", r.KeyTerms)
-	bulletSection(&b, "Core propositions", r.Propositions)
-	bulletSection(&b, "Era limitations", r.EraLimitations)
-	bulletSection(&b, "Author blind spots", r.BlindSpots)
-	bulletSection(&b, "Unproven assumptions", r.Assumptions)
+	bulletSection(&b, "Key Terms", r.KeyTerms)
+	bulletSection(&b, "Core Propositions", r.Propositions)
+	bulletSection(&b, "Era Limitations", r.EraLimitations)
+	bulletSection(&b, "Author Blind Spots", r.BlindSpots)
+	bulletSection(&b, "Unproven Assumptions", r.Assumptions)
 	return b.String()
 }
 
