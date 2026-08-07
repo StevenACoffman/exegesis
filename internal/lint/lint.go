@@ -49,8 +49,19 @@ type Options struct {
 //	description, escaping/absolute body links, runtime binding); it is pure.
 func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
 	ds := speclint.Frontmatter(s)
-	if want := filepath.Base(s.Dir); s.Name != want {
-		ds = append(ds, diagf("frontmatter: name %q != folder %q", s.Name, want))
+	// Only compare the name when there was a name to read. A frontmatter block that
+	// failed to parse leaves s.Name empty, and reporting that as a mismatch states a
+	// consequence of the YAML error as though it were a second, independent defect —
+	// speclint has already named the real one.
+	//
+	// The body checks below are deliberately still run: splitFrontmatter separates the
+	// block before the parse is attempted, so s.Body is intact and its defects are
+	// real. Suppressing them would make the author fix the YAML and lint again just to
+	// be told what could have been said the first time.
+	if s.FrontmatterErr == nil {
+		if want := filepath.Base(s.Dir); s.Name != want {
+			ds = append(ds, diagf("frontmatter: name %q != folder %q", s.Name, want))
+		}
 	}
 	ds = append(ds, checkBody(s.Body)...)
 	ds = append(ds, checkBudget(s, opts)...)

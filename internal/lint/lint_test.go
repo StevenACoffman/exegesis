@@ -1,6 +1,8 @@
 package lint_test
 
 import (
+	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -260,5 +262,41 @@ func TestParseCheck(t *testing.T) {
 				t.Errorf("ParseCheck(%q) = %v, want %v", tc.value, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestCheckSkipsNameMismatchWhenFrontmatterDidNotParse(t *testing.T) {
+	t.Parallel()
+	// A frontmatter block that fails to parse leaves Name empty. Reporting that as a
+	// name/folder mismatch states a consequence of the YAML error as a second defect.
+	s := &skill.Skill{
+		Dir:            filepath.Join("tree", "my-skill"),
+		Body:           "# Body\n\nFine.\n",
+		FrontmatterErr: errors.New("[3:45] value is not allowed in this context"),
+	}
+	for _, d := range lint.Check(s, lint.Options{}) {
+		if strings.Contains(d.Message, "!= folder") {
+			t.Errorf("must not report a name mismatch when the name could not be read: %q",
+				d.Message)
+		}
+	}
+}
+
+func TestCheckStillReportsNameMismatchWhenFrontmatterParsed(t *testing.T) {
+	t.Parallel()
+	// The guard must not weaken the rule for the ordinary case.
+	s := &skill.Skill{
+		Dir:  filepath.Join("tree", "my-skill"),
+		Name: "other-name",
+		Body: "# Body\n\nFine.\n",
+	}
+	found := false
+	for _, d := range lint.Check(s, lint.Options{}) {
+		if strings.Contains(d.Message, "!= folder") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("a real name/folder mismatch must still be reported")
 	}
 }
