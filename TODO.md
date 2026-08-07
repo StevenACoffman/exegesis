@@ -180,21 +180,17 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       the block before the parse is attempted, so `s.Body` is intact and its defects are real.
       Suppressing those too would make an author fix the YAML and lint again just to be told
       what could have been said the first time.
-- [x] **`redlines.Check` reported a missing trigger on an unparsed description.** DONE
-      (2026-08-06) upstream, taken here by bumping to skillet v0.10.0; no code change on this
-      side. `checkTrigger` read `s.Description`, which is empty when the YAML failed to parse,
-      so it demanded a trigger condition in prose the author had written and the parser could
-      not reach.
-      Only that check is guarded upstream. `checkSegments` and `checkQuotes` read the body,
-      which `splitFrontmatter` produces before the parse is attempted, so a blanket
-      suppression would have hidden the genuine 219-word quotation on this very skill.
-      This closes a fix spanning four packages: `skill` records the parse error, `speclint`
-      reports it as itself, `internal/lint` here stops comparing a name it could not read,
-      and `redlines` stops asking for a trigger. Measured end state on
-      `books/site-reliability-engineering/blameless-postmortem-process`, whose frontmatter
-      carries a quoted scalar followed by unquoted text: `lint` reports **1** diagnostic,
-      `lint --check redlines` reports **2** — the YAML error at `[10:45]` and that real
-      quotation. It began at four, two of which were consequences of the one syntax error.
+- [ ] **Take the `redlines` trigger guard once skillet releases it.** The false
+      `redline: description should state a trigger condition` on a skill whose frontmatter
+      did not parse is **fixed in skillet** (2026-08-06, unreleased): `redlines.Check` now
+      guards `checkTrigger` on `FrontmatterErr`, so it stops demanding a trigger of prose the
+      author did write. Only that check is guarded — `checkSegments` and `checkQuotes` read
+      the body, which `splitFrontmatter` produces before the parse is attempted, and
+      suppressing them would have hidden the genuine 219-word quotation on this very skill.
+      Verified through a `go.work`: `lint --check redlines` on
+      `books/site-reliability-engineering/blameless-postmortem-process` goes 3 diagnostics → 2.
+      **Open here until a skillet release carries it**, because exegesis pins v0.9.0, which
+      does not have it. Then bump and this closes with no code change on this side.
 - [ ] Drop the stale `pgx/v5 + sqlc` note in `RULES.md` (§ near line 648) —
       inherited template boilerplate; exegesis has no database code. `climax lint`
       is otherwise clean. (survey 2026-08-02)
