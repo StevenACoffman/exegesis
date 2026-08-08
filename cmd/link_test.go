@@ -39,7 +39,7 @@ func TestLinkAddsEdge(t *testing.T) {
 		t.Errorf("expected 'linked' in output, got:\n%s", out)
 	}
 	body := readSkill(t, dir)
-	if !strings.Contains(body, "## Related skills") {
+	if !strings.Contains(body, "## Related Skills") {
 		t.Errorf("section not added:\n%s", body)
 	}
 	if !strings.Contains(body, "- depends-on: `other` — needs it") {

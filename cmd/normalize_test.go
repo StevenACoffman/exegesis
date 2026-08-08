@@ -57,7 +57,7 @@ func TestNormalizeRewritesLegacySectionsAndIsIdempotent(t *testing.T) {
 	if !strings.Contains(got, "- composes-with: `skillb` — they are used together") {
 		t.Errorf("expected a canonical bullet, got:\n%s", got)
 	}
-	if !strings.Contains(got, "## Related skills\n") ||
+	if !strings.Contains(got, "## Related Skills\n") ||
 		strings.Contains(got, "Stage 3 Filling") {
 		t.Errorf("expected the heading to be canonicalised, got:\n%s", got)
 	}

@@ -645,14 +645,6 @@ ______________________________________________________________________
 
 ## 8. SQL and Data Access
 
-> **pgx/sqlc note (this repo):** This section's examples use `database/sql` (SQLite, `*sql.Tx`,
-> `ExecContext`). This repo uses `pgx/v5` + `sqlc` with the pgx driver. Where the examples show
-> `database/sql` APIs, use the pgx equivalents: `pool.Begin(ctx)` instead of `db.BeginTx(ctx, nil)`;
-> `defer tx.Rollback(ctx)` and `tx.Commit(ctx)` (both take a context); `tx.Exec(ctx, ...)` not
-> `tx.ExecContext(ctx, ...)`; pass `pgx.Tx` or `districtsql.DBTX` to helpers, not `*sql.Tx`
-> (`pgx.Tx` satisfies `districtsql.DBTX`; use `sqldb.DBTX` for service-level dependencies that
-> also need to call `Begin`). See the `pgxpool` and `sqlc` skills for repo-specific patterns.
-
 **Do not:**
 
 - Use an ORM — use `database/sql` directly. For PostgreSQL specifically, `pgx` and `sqlc` are the preferred alternatives; do not use `pgx` with non-PostgreSQL databases.

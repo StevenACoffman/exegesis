@@ -13,40 +13,45 @@ func TestNormalize(t *testing.T) {
 		want        string
 		wantChanged bool
 	}{
+		"a lowercase heading on disk is canonicalised": {
+			in:          "## Related skills\n\n- depends-on: `alpha` — because\n",
+			want:        "## Related Skills\n\n- depends-on: `alpha` — because\n",
+			wantChanged: true,
+		},
 		"canonical section is already normal": {
-			in:   "## Related skills\n\n- depends-on: `alpha` — because\n",
-			want: "## Related skills\n\n- depends-on: `alpha` — because\n",
+			in:   "## Related Skills\n\n- depends-on: `alpha` — because\n",
+			want: "## Related Skills\n\n- depends-on: `alpha` — because\n",
 		},
 		"bold kind with linked target becomes canonical": {
-			in: "## Related skills\n\n" +
+			in: "## Related Skills\n\n" +
 				"- **composes-with** → [`alpha`](../alpha/SKILL.md): because\n",
-			want:        "## Related skills\n\n- composes-with: `alpha` — because\n",
+			want:        "## Related Skills\n\n- composes-with: `alpha` — because\n",
 			wantChanged: true,
 		},
 		"reversed form becomes canonical": {
-			in:          "## Related skills\n\n- **alpha** (contrasts-with): because\n",
-			want:        "## Related skills\n\n- contrasts-with: `alpha` — because\n",
+			in:          "## Related Skills\n\n- **alpha** (contrasts-with): because\n",
+			want:        "## Related Skills\n\n- contrasts-with: `alpha` — because\n",
 			wantChanged: true,
 		},
 		"bare token becomes canonical": {
-			in:          "## Related skills\n\n- depends-on: alpha (because things)\n",
-			want:        "## Related skills\n\n- depends-on: `alpha` — (because things)\n",
+			in:          "## Related Skills\n\n- depends-on: alpha (because things)\n",
+			want:        "## Related Skills\n\n- depends-on: `alpha` — (because things)\n",
 			wantChanged: true,
 		},
 		// The 9-continuation-line risk: a wrapped rationale must survive whole.
 		"wrapped rationale is folded, not truncated": {
-			in: "## Related skills\n\n" +
+			in: "## Related Skills\n\n" +
 				"- **composes-with** [`alpha`](../alpha/SKILL.md): first part\n" +
 				"  second part continues here\n",
-			want:        "## Related skills\n\n- composes-with: `alpha` — first part second part continues here\n",
+			want:        "## Related Skills\n\n- composes-with: `alpha` — first part second part continues here\n",
 			wantChanged: true,
 		},
 		// The 5-prose-bullet risk: a bullet naming no skill must not be deleted.
 		"prose bullet is preserved verbatim": {
-			in: "## Related skills\n\n" +
+			in: "## Related Skills\n\n" +
 				"- contrasts-with: (traditional headcount-scaling model)\n" +
 				"- depends-on: `alpha` — because\n",
-			want: "## Related skills\n\n" +
+			want: "## Related Skills\n\n" +
 				"- contrasts-with: (traditional headcount-scaling model)\n" +
 				"- depends-on: `alpha` — because\n",
 			// Nothing changes: the prose bullet is copied through and the other
@@ -54,35 +59,35 @@ func TestNormalize(t *testing.T) {
 			wantChanged: false,
 		},
 		"multi-target becomes one bullet per target": {
-			in: "## Related skills\n\n- composes-with: `alpha`, `beta`\n",
-			want: "## Related skills\n\n" +
+			in: "## Related Skills\n\n- composes-with: `alpha`, `beta`\n",
+			want: "## Related Skills\n\n" +
 				"- composes-with: `alpha` — \n" +
 				"- composes-with: `beta` — \n",
 			wantChanged: true,
 		},
 		"duplicate relationship collapses": {
-			in: "## Related skills\n\n" +
+			in: "## Related Skills\n\n" +
 				"- **composes-with** [`alpha`](../alpha/SKILL.md): legacy wording\n" +
 				"- composes-with: `alpha` — canonical wording\n",
-			want:        "## Related skills\n\n- composes-with: `alpha` — legacy wording\n",
+			want:        "## Related Skills\n\n- composes-with: `alpha` — legacy wording\n",
 			wantChanged: true,
 		},
 		"suffixed heading becomes canonical": {
 			in:          "## Related skills (Stage 3 Filling)\n\n- depends-on: `alpha` — because\n",
-			want:        "## Related skills\n\n- depends-on: `alpha` — because\n",
+			want:        "## Related Skills\n\n- depends-on: `alpha` — because\n",
 			wantChanged: true,
 		},
 		"content outside the section is untouched": {
 			in: "---\nname: s\n---\n\n# Body\n\nProse here.\n\n" +
-				"## Related skills\n\n- **alpha** (depends-on): why\n\n---\n\nTail prose.\n",
+				"## Related Skills\n\n- **alpha** (depends-on): why\n\n---\n\nTail prose.\n",
 			want: "---\nname: s\n---\n\n# Body\n\nProse here.\n\n" +
-				"## Related skills\n\n- depends-on: `alpha` — why\n\n---\n\nTail prose.\n",
+				"## Related Skills\n\n- depends-on: `alpha` — why\n\n---\n\nTail prose.\n",
 			wantChanged: true,
 		},
 		"intro sentence inside the section is kept": {
-			in: "## Related skills\n\nThese are the related skills:\n\n" +
+			in: "## Related Skills\n\nThese are the related skills:\n\n" +
 				"- **alpha** (depends-on): why\n",
-			want: "## Related skills\n\nThese are the related skills:\n\n" +
+			want: "## Related Skills\n\nThese are the related skills:\n\n" +
 				"- depends-on: `alpha` — why\n",
 			wantChanged: true,
 		},

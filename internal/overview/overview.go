@@ -28,7 +28,7 @@ func Check(content string) []string {
 	var problems []string
 
 	if strings.TrimSpace(textByHeading["one-sentence summary"]) == "" {
-		problems = append(problems, "missing a non-empty '## One-sentence summary'")
+		problems = append(problems, "missing a non-empty '## One-Sentence Summary'")
 	}
 
 	skeleton := bulletsByHeading["skeleton"]

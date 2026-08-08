@@ -12,8 +12,16 @@ import (
 	"strings"
 )
 
-// sectionHeading is the exact H2 that holds a skill's related-skill edges.
-const sectionHeading = "## Related skills"
+// sectionHeading is the exact H2 that holds a skill's related-skill edges, in the form
+// this package writes.
+//
+// Title case because `rumdl` MD063 enforces it: with the lowercase form, `normalize`
+// rewrote the heading one way and `rumdl fmt` rewrote it straight back, each undoing the
+// other on the same line. The corpus had already settled it -- 179 skills title case,
+// none lowercase -- so this makes normalize a no-op on the heading instead of a churn
+// across every file. Matching stays case-insensitive (see isSectionHeading), so a skill
+// written either way is still found.
+const sectionHeading = "## Related Skills"
 
 // The known related-skill edge kinds. Any other kind is invalid: `link` rejects
 // it, `index` skips it on read.
