@@ -64,11 +64,13 @@ gates it) **and** optional per-case `checks` (skillsaw's `judge` consumes them):
 ### The merge-skills CLI surface (documented, not built — audited 2026-08-06)
 
 `~/Documents/agent-orange/steve-skill-market/skills/merge-skills/SKILL.md` instructs agents
-to run four exegesis subcommands, three flags and one edge kind. As of 2026-08-07
-`quotecheck` and `tests --merge`/`--migrate` exist; `merge-status`, `merge-index`,
-`a2check`, `verify --merge` and the `superseded-by` edge kind still do not, so an agent
-following that skill still fails at those steps. The skill is deliberately left as-is; it
-reads as the spec for this work.
+to run four exegesis subcommands, three flags and one edge kind. As of 2026-08-08
+`quotecheck`, `merge-status` and `tests --merge`/`--migrate` exist; `merge-index`,
+`a2check`, `verify --merge`, `merge-status --link` and the `superseded-by` edge kind still
+do not, so an agent following that skill still fails at those steps. Both open *decisions*
+behind them are now settled (the provenance model, and adding the edge kind) — what is left
+is construction. The skill is otherwise left as-is; it reads as the spec for this work,
+with its frontmatter-key claim corrected 2026-08-08.
 
 Nothing else in the exegesis pipeline depends on these — book2skill's flow is unaffected.
 
@@ -112,13 +114,18 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       rumdl issues, and that `exegesis lint` still passes on a skill carrying a ledger.
       The first two-level command in this CLI (`merge-status <append|check>`), matching the
       syntax merge-skills/SKILL.md already tells agents to run.
-      **`--link` is NOT built**: it writes a `superseded-by` bullet, and that edge kind is
-      still an open decision below. The flag is accepted and returns a usage error saying
-      so, rather than failing as an unknown flag.
-- [ ] **DECIDE FIRST: which provenance model is authoritative.** `merge-index` cannot be
-      built until this is settled, because the spec and the only real merged tree describe
-      two different data models and the spec's has zero instances on disk (surveyed
-      2026-08-07 against `~/Documents/agent-orange/books/merged/all-books-v1`).
+      **`--link` is NOT built**: it writes a `superseded-by` bullet. The flag is accepted and
+      returns a usage error saying so, rather than failing as an unknown flag.
+      **Unblocked 2026-08-08** — the edge kind is decided (add it; see below). Building
+      `--link` now waits only on the kind itself, plus one sub-question it owns: `--into` is
+      documented as a bare merged-skill slug while the bullet needs a tree-qualified target,
+      so either `--link` composes `merged/<run>/<into>`, or `--into` starts carrying the
+      qualified form and the ledger's `into:` becomes qualified with it.
+- [x] **Which provenance model is authoritative — DECIDED 2026-08-08.** The follow-on work
+      is `merge-migrate` and `merge-index` below; this item is the record of the decision and
+      the evidence behind it. It was raised because the spec and the only real merged tree
+      appeared to describe two different data models, the spec's with zero instances on disk
+      (surveyed 2026-08-07 against `~/Documents/agent-orange/books/merged/all-books-v1`).
 
       | what `merge-skills/SKILL.md` says merge-index reads | found on disk |
       | --- | --- |
@@ -146,25 +153,93 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       column is editorial judgment that no generator can reproduce. `rejected/pair-NNN.md`
       are free-form prose with bold labels, not structured records.
 
-      **The four decisions:**
-      1. Is `all-books-v1` governed by exegesis at all, or is it an artifact of an earlier
-         pipeline that should be left alone?
-      2. If governed: does merged-skill frontmatter get an allowlist exemption in
-         `speclint`, or does the provenance move into the body?
-      3. Is the Cluster column kept? If so it needs a source -- a `cluster:` key, or a
-         config file the generator reads.
-      4. Does the spec's ledger model survive, now that `merge-status append|check` exists
-         to write it, or is frontmatter `source_skills` the real contract?
+      **DECIDED 2026-08-08.** The framing above was wrong on one point, and the correction
+      settles most of the rest: the spec is *not* ambiguous. `merge-skills/methodology/
+      05-phase2` and `templates/MERGED_SKILL.md.template` both say, in as many words, do not
+      emit `id`/`title`/`type`/`source_skills`/`related_skills` as frontmatter — capture the
+      sources in a body `## Provenance` section. The single line reading otherwise
+      (`SKILL.md:424`) names the *concept* `related_skills`, not the frontmatter key. So
+      `all-books-v1` is not a rival model; it violates the spec of the skill that produced it.
 
-      Until these are answered, building `merge-index` produces a command that reads
-      nothing that exists and cannot regenerate the INDEX that is actually there.
+      1. **Governed — migrate, staged.** Composition moves into the body now; the source-side
+         supersession links wait on the `superseded-by` decision below, so this does not
+         depend on it.
+      2. **Body, as a fenced `yaml` block inside `## Provenance`** — the shape `## Merge
+         Status` already uses, for the same reason: machine-readable without putting a
+         non-spec key in frontmatter. No `speclint` exemption. (`metadata` was considered and
+         rejected: the spec defines it as a map of string keys to *string* values, and a
+         composition is a list of records.)
+      3. **Cluster kept, sourced from an optional `clusters.yaml` at the merge root**, with a
+         sensible default when absent (one cluster per skill, or no Cluster column at all —
+         whichever reads better in the generated table). Editorial judgment stays in a
+         human-owned file instead of becoming a per-skill key.
+      4. **Both, with distinct jobs.** The ledger is authoritative for a source skill's
+         *fate* — including `rejected` and `no-candidate`, which no merged skill exists to
+         record. The body Provenance block is authoritative for a merged skill's
+         *composition*. `merge-index` joins them on pair-id.
+
+      **Measured, and it makes the migration cheap: the `supersedes` edges carry no
+      information.** For all 27 merged skills the set of
+      `related_skills[relation=supersedes].slug` **equals** the set of `source_skills.slug`.
+      54 edges, zero bits beyond `source_skills`; the only unique content is 55 `note:`
+      strings, which the Provenance block carries as `note:` per source. So the migration is
+      lossless without inventing an edge kind, and forward supersession is derived rather
+      than restated.
+
+      **The frontmatter allowlist was itself wrong, and is now fixed.** Checked against
+      <https://agentskills.io/specification> (2026-08-08): the defined keys are `name`,
+      `description`, `license`, `compatibility`, `metadata`, `allowed-tools`.
+      `skillet/speclint` was rejecting three of them and the merge-skills doc claimed
+      `author` and `version` were allowed — neither is a top-level key at all; the spec's own
+      example carries both inside `metadata`. `speclint.AllowedFrontmatterKey` now matches the
+      spec, keeping `tags` as the one documented deviation (163 installed skills and every
+      book2skill output carry it, so rejecting it would report a defect on nearly every skill
+      in existence). The merge-skills doc and template are corrected. **Not released:**
+      skillet needs a tag and an exegesis bump before the fix reaches this repo's lint.
+
+      **Still to do, in order** (each is small and now unblocked):
+      - `exegesis merge-migrate MERGED_TREE` (or a one-off): frontmatter → body
+        `## Provenance` + fenced yaml, `name:` set to the folder, `title:`/`id:` dropped
+        (both derivable), notes carried. 27 files. Verify with `lint` + a word-multiset check.
+      - Then `merge-index` (below), reading Provenance blocks, ledgers, and `clusters.yaml`.
+      - `verify --merge` is still needed for the *other* failure the tree has: the default
+        test-prompt validator rejects `prefer_merged_over_source`, which `tests --merge`
+        accepts. Three cases also have an empty `expected`, which is a content fix.
+- [x] **`exegesis merge-migrate MERGED_TREE [--check]`** — DONE (2026-08-08). Stage one of the decision above:
+      move a merged skill's provenance out of frontmatter and into the body. Per skill:
+      `name:` ← folder (the tree has none, which is half its lint failures); `description`
+      and `tags` kept; `id`/`title`/`type`/`source_skills`/`related_skills` removed; a
+      `## Provenance` section written with the prose bullets plus the fenced `yaml` block;
+      the 55 `note:` strings carried onto their source entries; the single
+      `relation: composes-with` written as a body `## Related Skills` bullet, which is a
+      canonical kind and needs no decision.
+      **The 54 `supersedes` relations are dropped, not migrated** — measured identical to
+      `source_skills` in all 27 skills, so writing them again would be one fact in two places.
+      Source-side `superseded-by` bullets are a separate stage, waiting on the edge-kind
+      decision; nothing here depends on it.
+      **Measured on a copy of the real tree: 162 lint errors → 0, all 27 migrated,
+      `--check` idempotent afterwards.** That number is the whole point of the exercise.
+      A word-multiset comparison found the one real defect this could have shipped with:
+      the 55 `note:` strings live on `related_skills`, not on `source_skills`, so dropping
+      the redundant `supersedes` relations was taking somebody's prose with them. `withNotes`
+      joins them onto their source by slug before the relation is dropped. After that fix the
+      only words that disappear are structural keys (`id:`, `title:`, `relation:`,
+      `supersedes`) and the frontmatter title itself — which is an exact duplicate of the
+      body `# ` heading in the 17 skills that have one, and becomes that heading in the 10
+      that do not.
+      Built as a command rather than a one-off because `--check` gates a tree in CI, which a
+      script cannot; the pure core is `internal/mergemigrate`, the shell mirrors `normalize`'s.
+      **The real tree has not been migrated** — every measurement above was taken on a copy.
+      Running `exegesis merge-migrate books/merged/all-books-v1` rewrites 27 files that are
+      already carrying uncommitted changes, so it is left as your call, and `merge-index` is
+      what needs it done.
 - [ ] **`exegesis merge-index MERGED_TREE`** — INDEX for a merged tree. Reads the YAML headers
       of `source-verification/<pair-id>-{r,a1}.md` to build a "Source Verification Summary"
       table (its V1–V4 column comes from the ledgers), so each verdict is written once instead
       of hand-maintained. Distinct from `index`, which knows nothing about merge provenance.
-      **Header reading is unblocked upstream (needs the skillet bump).** Use
-      `frontmatter.Split(text) (block, body)` and unmarshal `block` yourself — do **not**
-      write a second frontmatter parser. It was promoted out of `skill.splitFrontmatter` for
+      **Header reading is unblocked upstream** — `frontmatter` ships in the pinned
+      skillet v0.11.0. Use `frontmatter.Split(text) (block, body)` and unmarshal `block`
+      yourself — do **not** write a second frontmatter parser. It was promoted out of `skill.splitFrontmatter` for
       exactly this call site, and it handles the cases a fresh implementation gets wrong: an
       empty header, an unterminated one, and CRLF (normalized inside `Split`, so this caller
       must not normalize first). `skill.Load` is no use here — it takes a *directory* and
@@ -185,14 +260,43 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       }
       ```
 
-      **Blocked on the decision above, not on `merge-status`** (which now exists). The
-      V1-V4 column reads the ledgers, and no skill has one. Note the ledger is a markdown *section*,
-      not frontmatter — `merge_status` is not a spec-allowed frontmatter key and would fail
-      lint — so `frontmatter.Split` does not help there.
-- [ ] **`exegesis a2check --source-skill A,B MERGED_SKILL_DIR`** — the A2-sharpness gate: the
-      merged `A2` must carry ≥2 language signals neither source has. Advisory by default,
-      `--strict` to fail. Counting is structural; whether the signals are semantically
-      distinct stays the agent's.
+      **Unblocked by the decision above (2026-08-08); now blocked only on the migration**,
+      which produces the Provenance blocks this reads. Ordering: migrate, then build this
+      against the migrated tree as the fixture. Sources of truth, one per section:
+      - **Provenance table / cross-book graph** ← each merged skill's `## Provenance` fenced
+        `yaml` (`source_skills`). Supersession is *derived* from that list, not read from
+        edges — measured redundant, see above — so this section needs no new edge kind.
+      - **Source Verification Summary** ← `source-verification/<pair-id>-{r,a1}.md` headers,
+        via `frontmatter.Split`; its V1–V4 column ← the ledgers. Both still have zero
+        instances on disk, so this section renders empty until a merge run writes them. That
+        is honest output, not a blocker.
+      - **Cluster Summary** ← optional `clusters.yaml` at the merge root; absent, the column
+        is omitted rather than guessed.
+      - **Rejected Pairs** ← `rejected/pair-NNN.md`, which are free-form prose with bold
+        labels. Either give them the same fenced-yaml treatment or render them as links only.
+      Read the body sections with `skillet/markdown.Parse` (already in v0.11.0, goldmark) —
+      do not hand-roll a section scanner. `skill.Load` is no use for the verification headers:
+      it takes a *directory* and appends `SKILL.md`.
+      Note the ledger is a markdown *section*, not frontmatter — `merge_status` is not a
+      spec-allowed frontmatter key and would fail lint — so `frontmatter.Split` does not help
+      there; `internal/mergestatus.Parse` does.
+- [x] **`exegesis a2check --source-skill A,B MERGED_SKILL_DIR`** — DONE (2026-08-08). The
+      A2-sharpness gate: the merged `A2` must carry ≥2 language signals neither source has.
+      Advisory by default, `--strict` to fail. Counting is structural; whether the signals are
+      semantically distinct stays the agent's.
+      **A signal is a double-quoted phrase in A2, not a "### Language Signals" subsection.**
+      Measured: only 10 of the 27 merged skills have that heading or its bold-label variant,
+      so a reader that required it would score two thirds of the tree as having no signals.
+      **The threshold discriminates — measured across the 24 merged skills whose sources are
+      on disk:** 15 clear the bar, 3 add exactly one, 1 adds none of the one it states, and
+      **5 state no signal at all**. That last group is why the report distinguishes "states no
+      A2 language signals" from "0 of N are new": they are different defects, in different
+      places, fixed by different edits, and one message for both would send a reader looking
+      in the wrong segment.
+      `textnorm` was promoted out of `quotecheck` on this second consumer — two guards that
+      folded text differently would disagree about whether the same words match, and no
+      output could explain why. `quotecheck` now calls it directly rather than through a
+      pass-through wrapper.
 - [x] **`exegesis tests --merge` and `--migrate`.** DONE (2026-08-07, skillet v0.11.0). `--merge` enforces a **four**-category gate
       (≥3 `should_trigger`, ≥2 `should_not_trigger`, ≥2 `edge_case`, ≥2
       `prefer_merged_over_source`) rather than the current three, exiting non-zero until it
@@ -225,6 +329,16 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
 - [ ] **`exegesis verify --merge [--source-book A,B] [--strict]`** — one pass over a merged
       tree: `MERGE_OVERVIEW.md` presence, per-skill lint, and the `tests --merge` gate;
       `--source-book` additionally runs the a2check advisory across every merged skill.
+      **Measured need (2026-08-08):** default `verify` on `all-books-v1` reports
+      `unknown type "prefer_merged_over_source"` on every merged skill, because the default
+      composition is the three book2skill categories and `tests --merge` is the only place
+      that knows about the fourth. That is the whole justification for the flag: a merged tree
+      is validated under a different composition, not a laxer one. Also surfaced: three cases
+      carry an empty `expected`, which is a content fix in the tree, not a gate change.
+      The shape to reach for is a **profile** — the tree says which composition it is
+      validated under, and the gates read it — rather than a second code path per gate. Build
+      it here first; it earns promotion to skillet only on a second consumer, the way
+      `redlines` did.
 - [x] **`exegesis normalize` and `rumdl` fought over the `## Related skills` heading.** DONE (2026-08-07).
       Found while deciding the ledger's heading case (2026-08-07). `related.sectionHeading`
       is lowercase `## Related skills` and `normalize` rewrites the heading to it;
@@ -253,12 +367,74 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       touch interpolated identifiers".
       Test inputs deliberately keep the lowercase spellings: they are now the coverage
       proving the readers stayed case-insensitive.
-- [ ] **A `superseded-by` edge kind — decide, then build or reject.** merge-skills links a
-      source skill to the merged skill that replaced it
+- [x] **A `superseded-by` edge kind — DECIDED and BUILT 2026-08-08.**
+      merge-skills links a source skill to the merged skill that replaced it
       (`link --kind superseded-by --to <merged-slug> books/<slug-a>/<source-skill>/`), but
       `related.Kind` admits only `depends-on`, `contrasts-with` and `composes-with`, so that
-      call is rejected today. This is the smallest of the merge-surface items and the one
-      that touches the most shared code, so decide it before the rest.
+      call is rejected today. The pros and cons that informed the decision are kept below;
+      what follows first is the design the corpus settled and the work it implies.
+
+      **The corpus already writes these edges — 26 of them (measured 2026-08-08).** Every
+      one is a body bullet in the bold-kind dialect with a *tree-qualified* target:
+      `- **superseded-by**: merged/all-books-v1/<merged-slug> — why`. Five further
+      `superseded-by` bullets name prose rather than a skill and must keep yielding no edge.
+      All 31 are invisible today, because `Kind.Valid()` rejects the kind *and* `isSlug`
+      rejects a target containing a slash.
+
+      **The cross-tree blocker resolves into the wire format, and not as a special case.**
+      The same qualified form already appears on the three existing kinds — 9 targets like
+      `depends-on: site-reliability-engineering/<skill>`, all in the merged tree, which is
+      exactly what merge-skills `methodology/06-phase3` prescribes. So a target is
+      `[<tree-path>/]<slug>` for **every** kind, each segment strictly slug-shaped so prose
+      still yields nothing; qualified means "another tree, resolved against the parent of
+      this one". That is the third of the three options priced below, and it turns out not to
+      change the wire format at all — it describes what the corpus is already doing.
+
+      **Which makes the gate honest rather than weakened:**
+      - `DanglingEdges` (pure, tree-scoped) **skips a qualified target**, because it cannot
+        see the other tree. Reporting them would be a false positive on all 35 real edges.
+      - The existence check moves to authorship time, where the filesystem is: `relate` errors
+        and `link` warns — the split those two already have — resolving
+        `<tree>/../<qualified-target>/SKILL.md`. `internal/related` stays pure; the resolution
+        belongs in `indexgen`, which is the package that already walks trees on disk.
+      - `Mermaid` will not render a qualified edge, since `edgeLines` filters on in-tree
+        slugs. That is correct here and worth stating plainly: the cross-book graph is
+        `merge-index`'s job, not a book's INDEX.
+
+      **The terminality question, answered:** a superseded skill still appears in the skill
+      list and the learning path. merge-skills is explicit that source skills are retained as
+      the audit trail of what was merged, and `prereqs` filters on `DependsOn`, so
+      supersession cannot reorder the path.
+
+      **As built.** `related` gained the constant, `Kinds()` (the vocabulary as one value, so
+      `Valid` and every usage message read from one definition — the shape `mergestatus.States`
+      already uses), `Qualified(target)`, and a qualified-target grammar in `dialects.go` where
+      `isTarget` accepts a path of strict slugs. `DanglingEdges` and `UnknownSlugs` skip
+      qualified targets; `indexgen.MissingQualified` resolves them against the tree's parent,
+      so `relate` errors and `link` warns — the split those two already had.
+      **A pre-existing reader gap had to be closed first, and a probe found it rather than a
+      reading of the code:** `- **kind**: target` parsed as *no edge at all*, for every kind,
+      because only "→" was stripped after a bold kind and never ":". That is the exact shape
+      all 25 real `superseded-by` bullets use, so the kind alone would have changed nothing.
+      `afterBoldKind` now takes either separator.
+      **`link` was silently destroying qualified targets:** it ran `skill.Slug` over the whole
+      `--to`, which folds "/" to "-", so `merged/all-books-v1/x` would have been written as one
+      slug naming a skill that cannot exist. Segments are slugged individually now.
+      **Measured on a copy of the real books, old binary against new:** 21 files change, all of
+      them a bold-kind `superseded-by` bullet becoming canonical; **0 words lost**; in-tree
+      Mermaid edges 270 before == 270 after; **0 dangling reports**, which is the check that
+      the gate did not start crying wolf about cross-tree targets. 25 raw bullets → 24 rewritten
+      plus 1 in `effective-go-recipes/skills/`, whose skills sit two levels below the tree root
+      and which converts when handed that path — a discovery-depth quirk, not a reader gap.
+      **Still open, and it belongs to `--link` rather than here:** `--into` is documented as a
+      bare merged-skill slug while the bullet needs a tree-qualified target, so either `--link`
+      composes `merged/<run>/<into>` from the ledger fields, or `--into` starts carrying the
+      qualified form and the ledger's `into:` becomes qualified with it.
+
+      Noted while measuring, not part of this: **25 source skills carry
+      `relation: superseded-by` in *frontmatter*** — the same lint-failing shape the merged
+      tree has, on the source side. The migration item above only covers `books/merged/`;
+      these are a second, larger population that needs the same treatment.
 
       **What a fourth kind gets for free.** Adding the constant and a `Valid()` case is
       enough for most of the pipeline: the dialect reader accepts any `Valid()` kind, dedup
@@ -298,13 +474,18 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       - It is a wire-format change to a format just normalized across 232 files. A kind added
         later is cheap to read but means another normalization pass to write consistently.
 
-      **The alternative worth pricing first:** do not add the kind, and let the ledger be the
-      single source of truth. `merge-index` already reads the ledgers (for the V1–V4 column),
-      so it can build the supersession table and the cross-book graph from `into:` without
-      any new edge kind — and without the cross-tree dangling problem, because the ledger
-      names a tree-qualified run (`run:` matches `books/merged/<slug>/`). That trades the
-      self-describing `SKILL.md` for a gate that stays honest. Decide which of those two
-      properties matters more before writing code.
+      **The alternative that was priced and not taken:** do not add the kind, and let the
+      ledger be the single source of truth. `merge-index` already reads the ledgers (for the
+      V1–V4 column), so it could build the supersession table and the cross-book graph from
+      `into:` without any new edge kind — and without the cross-tree dangling problem,
+      because the ledger names a tree-qualified run (`run:` matches `books/merged/<slug>/`).
+      Rejected because the trade it was priced against turned out not to exist: qualified
+      targets keep the gate honest *and* keep the `SKILL.md` self-describing. What remains of
+      the objection is the duplication — the ledger's `into:` and the edge record the same
+      fact — so the rule is that `--link` writes both in one call and neither is hand-edited.
+      The ledger stays the more expressive record (`state`, `reason`, `excluded`); the edge is
+      the navigation pointer. That is the same division the merge-skills spec draws between
+      `merge_status` and a related-skill link, so it is not a new concept to hold.
 
 - [x] `exegesis distill` — the resumable, agent-driven pipeline. DONE: `cmd/distill` over a pure
       `internal/distill` core. `run.go`'s `Run` walks an ordered `stages()` sequence (the first stage
@@ -383,6 +564,25 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
 
 ## Cross-repo (shared with skillsaw)
 
+- [x] **Release the `speclint` allowlist correction and bump to it.** DONE (2026-08-08):
+      skillet **v0.12.0** tagged (PR #13), exegesis and skillsaw both bumped, both suites green. Checked against <https://agentskills.io/specification>: the defined
+      frontmatter keys are `name`, `description`, `license`, `compatibility`, `metadata`,
+      `allowed-tools`. `AllowedFrontmatterKey` permitted only four of them and rejected
+      `license`, `compatibility` and `metadata` — a skill declaring its own license was told
+      the key does not exist. `tags` stays permitted as the one documented deviation: the spec
+      does not define it, but 163 installed skills and every book2skill output carry it, so
+      rejecting it would report a defect on nearly every skill rather than describe one.
+      `author` and `version` are **not** top-level keys at any level of the spec — its own
+      example puts both inside `metadata` — and the merge-skills doc that claimed otherwise is
+      corrected, along with its merged-skill template.
+      Verified rather than asserted: a skill carrying `license:` + `metadata:` went from two
+      `disallowed key` errors to `ok`. **0 skills in `books/` use the three keys and 15 of the
+      installed skills do**, so the trees this repo gates were unaffected while the corpus an
+      agent actually loads was the one being misreported.
+      **Watch for the follow-on:** widening the allowlist can only *reduce* findings, so no
+      tree newly fails — but any skill that was passing lint *because* it had no `metadata`
+      block may now start using one, and `metadata` values are string-only. That constraint is
+      not checked by anything today.
 - [x] Extract the `test-prompts.json` + `checks` schema and the agentskills.io
       frontmatter lint into a **shared Go module** so exegesis and skillsaw cannot
       drift. DONE (2026-08-03): the schema was already shared via `skillet/testprompts`
@@ -653,6 +853,34 @@ proposes is in the wrong place.
       `normalize --check`, graph edges 270 before == 270 after, 0 dangling. Verified
       information-preserving by a word-multiset comparison over all 242 skills, discounting the
       heading suffix and the removed link paths: **0 words lost**.
+- [x] **`quotecheck --min-support N` — the mechanical half of book2skill's V1.** DONE
+      (2026-08-08). Survey of book2skill (2026-08-08) for deterministic work still left to the
+      agent found only this one; the rest of that skill's remainder is genuine judgment (V2
+      predictive power, V3 uniqueness, RIA++ construction, test-prompt design), and its
+      deterministic half was already offloaded — `verify` covers red lines #2-#5 and the graph,
+      and `quotecheck` now covers quotation containment.
+      V1 asks whether the book contains "at least two independent paragraphs providing
+      supporting evidence". Whether a passage *supports* a unit is judgment; whether the
+      claimed passages *exist in the source* is exactly what `quotecheck` already answers.
+      `--min-support N` fails a skill with fewer than N located passages, gating the countable
+      half and leaving the semantic half where it belongs.
+      Partial by design — do not let it read as "V1 is now automated". The help text says so
+      in the same words: it cannot tell whether a passage supports the unit, nor whether two
+      located passages are independent rather than two sentences of one paragraph.
+      **Support is counted in passages, not quotations,** which is forced by the same
+      measurement that shaped `quotecheck` itself: 95% of the corpus writes the whole R
+      segment as one blockquote, so a quotation count is 1 for nearly every skill and
+      `--min-support 2` could never be met by a faithful one.
+      **The counting lives in `quotecheck.Support`, not in the command**, so the number the
+      gate compares and the number the "N/M passages located" line prints are the same number;
+      the shell now derives its miss count from it rather than tallying separately.
+      **The case that decided the semantics: a skill that quotes nothing.** It used to print
+      "no quotations …" and pass, which under a threshold is exactly backwards — zero located
+      passages is zero support — so `Support(nil) == 0` and the gate reads the same for both.
+      Without the flag the output is byte-identical to before.
+      Verified on a real skill (`site-reliability-engineering/blameless-postmortem-process`)
+      against its own R text as the source: 10/10 located, exit 0 at `--min-support 3`; against
+      an unrelated source, 0/10 and `SUPPORT 0 located, --min-support 3`, exit 1.
 - [ ] **Decide the kind vocabulary for the sixth bullet dialect (250 bullets).** Found while
       normalizing. A sixth dialect exists that the reader does not map:
       `` - **[slug](../slug/SKILL.md)** — informs: why ``. Its kinds are a *different taxonomy*
@@ -666,11 +894,44 @@ proposes is in the wrong place.
       mapping (including whether to add kinds) and the reader can absorb the dialect in an
       afternoon; until then these 250 bullets stay invisible to `index` and untouched by
       `normalize`.
-- [ ] **13 skills have two `## Related skills` sections.** Pre-existing in `HEAD`, not caused by
-      the normalization — typically a suffixed lowercase heading followed by a capital-S one.
-      `findSection` takes the first and stops at the next heading, so the second section's
-      bullets are invisible. Merge them in the content, or teach the reader to concatenate
-      every related-skills section in a file. Merging is a content edit, so it is left to you.
+- [x] **Skills with two `## Related Skills` sections — the reader now merges them and
+      `normalize` folds them into one.** DONE (2026-08-08). Pre-existing in `HEAD`, not caused
+      by the normalization — typically a suffixed heading followed by a plain one.
+      `findSection` took the first and stopped at the next heading, so the second section's
+      bullets were invisible to `index`, `verify`, `relate` and `link`.
+      **Count corrected again, 19 → 13 (2026-08-08), measured with the real matcher.** All 13
+      are in `books/site-reliability-engineering/`. The 2026-08-07 figure of 19 does not
+      reproduce; the count that matters is the one the code reports.
+      **As built, in three parts.** `findSections` returns every section rather than the first;
+      `ParseSection` reads them all, dedupes by (Kind, Target) first-occurrence-wins as before,
+      and now returns the edges **sorted by kind then target** rather than in file order — a
+      relationship means the same thing whichever section states it, so the reader's answer
+      should not record which one won. `Upsert` looks for an existing bullet in every section
+      but writes a new one to the first, so the next `relate` over one of these files cannot
+      manufacture a duplicate of an edge the second section already states.
+      **`normalize` merges a later section only when every line of it is a bullet, a blank, or
+      a thematic break** — measured: all 13 have exactly that shape (heading, blank, bullets,
+      blank, break). Its bullets move into the first section, canonical where understood and
+      verbatim where not, and the span is deleted whole. A later section holding prose is left
+      where it is and normalized in place; deleting a paragraph to tidy a heading is not a
+      trade worth making, and that guard is the documented limit.
+      **The merge recovers 0 new edges, and that is the honest finding.** Those second sections
+      write `**depends_on**` and `**composes_with**` with underscores, which are not valid
+      kinds, so they yielded nothing before and yield nothing now. Their bullets carry the only
+      rationale anyone wrote, which is why they move verbatim rather than being dropped with
+      the heading. Mapping the underscore spellings belongs with the sixth-dialect decision
+      above, not here.
+      **Measured on the real corpus** (a copy; `~/Documents/agent-orange/books` was not
+      touched), old binary against new: **exactly the 13 files differ and nothing else**; the
+      only words removed from each are `## Related Skills` and one `---`; every one now holds a
+      single section; `normalize --check` is clean afterwards; Mermaid edges 270 before == 270
+      after, 0 dangling in both; and **every INDEX.md is byte-identical**, which is the evidence
+      for the claim that sorting the reader's output is invisible downstream.
+      Noted while measuring, not acted on: `books/` currently has 287 files modified but
+      uncommitted, written 2026-08-06 by the pre-title-case binary — their headings are the
+      lowercase `## Related skills`. That is why 242 skills read as non-canonical today, under
+      `HEAD` and under this change alike. It is a corpus question (commit or discard that
+      working tree), not a code one.
 - Cross-repo decision (no action yet): the same analysis proposes writing
       `testprompts.DeriveChecks` output back into `test-prompts.json` on the skillsaw side.
       exegesis is already half of that — `scaffold`'s `BuildTests` persists derived checks —
@@ -678,6 +939,42 @@ proposes is in the wrong place.
       (`--derive-checks`, alongside `--scaffold`), filling checks for cases that have none.
       Pick one home; see `../skillsaw/TODO.md` for the consumer-side framing and the
       legacy-shape normalization caveat.
+
+## SkillLens quality dimensions — a third lint tier (2026-08-08)
+
+Source: `~/Documents/agent-orange/skillopt_changes_findings.md`. skillsaw scores three
+dimensions taken from `microsoft/SkillLens` (arXiv:2605.23899) — failure-mechanism
+encoding, actionable specificity, and a high-risk action blacklist, each validated at
+65–66% predictive accuracy against downstream skill utility. exegesis gates structure and
+today measures none of them, so a tree can pass every gate here and still be the thing
+SkillLens names as the dominant failure mode: polished, comprehensive-sounding guidance
+carrying no concrete failure knowledge.
+
+- [ ] **Add `lint --check skilllens` over `skillet/skilllens`.** A third tier beside
+      `speclint` and `redlines`, not folded into either — same reasoning that split those
+      two: the spec moves when agentskills.io moves, the red lines when book2skill's
+      methodology moves, and these when the SkillLens rubric moves. Three independent
+      schedules, three packages. Blocked on the skillet promotion (see that TODO); the
+      detectors exist today but are stranded in `skillsaw/internal/rubric`.
+      Proposed severities, and they are not uniform:
+      - **error** — a `B` segment present but carrying no forbidden pattern with a stated
+        reason. Structural, and already mandatory: `redlines.checkSegments` requires `B` of
+        every book2skill body, so this checks that the segment does its job rather than
+        merely existing.
+      - **warning** — no failure-mechanism span anywhere in the body.
+      - **warning** — ≥3 softening phrases, matching skillsaw's existing threshold so the
+        gate and the score cannot disagree about the same file.
+      **Keep it opt-in, for the reason `--check redlines` already is.** skillsaw measured
+      13 of 20 hand-written skills in `~/.claude/skills` failing the RIA segment check
+      purely for not being book2skill output; a quality rubric aimed at book trees will
+      behave the same way. Default off, on for book trees.
+- [ ] **Measure before choosing the error/warning split above.** The corpus has already
+      overturned one plausible-sounding plan this year — `--write-checks` was cancelled
+      after measuring 0 derivable checks across 1275 cases. Same discipline applies: run
+      the three detectors across the 233-skill tree first and report the hit distribution.
+      If the `B`-segment check fails most book2skill output, the defect is in generation,
+      not in the tree, and the fix belongs in `book2skill` (whose TODO now carries the
+      authoring side) rather than in a gate that blocks everything.
 
 ## Reasoning-toolkit survey (unified-thinking, 2026-08-05)
 

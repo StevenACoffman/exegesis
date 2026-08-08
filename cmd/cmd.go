@@ -16,10 +16,12 @@ import (
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 
+	"github.com/StevenACoffman/exegesis/cmd/a2check"
 	"github.com/StevenACoffman/exegesis/cmd/distill"
 	"github.com/StevenACoffman/exegesis/cmd/index"
 	"github.com/StevenACoffman/exegesis/cmd/link"
 	"github.com/StevenACoffman/exegesis/cmd/lint"
+	"github.com/StevenACoffman/exegesis/cmd/mergemigrate"
 	"github.com/StevenACoffman/exegesis/cmd/mergestatus"
 	"github.com/StevenACoffman/exegesis/cmd/normalize"
 	"github.com/StevenACoffman/exegesis/cmd/quotecheck"
@@ -53,6 +55,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	normalize.New(r)
 	quotecheck.New(r)
 	mergestatus.New(r)
+	mergemigrate.New(r)
+	a2check.New(r)
 	// register new commands here
 
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("EXEGESIS")); err != nil {

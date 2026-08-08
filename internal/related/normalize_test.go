@@ -1,6 +1,7 @@
 package related_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/StevenACoffman/exegesis/internal/related"
@@ -158,5 +159,99 @@ func TestNormalizePreservesTheEdgeSet(t *testing.T) {
 		if before[i].Kind != after[i].Kind || before[i].Target != after[i].Target {
 			t.Errorf("edge %d changed: %+v -> %+v", i, before[i], after[i])
 		}
+	}
+}
+
+func TestNormalizeMergesASecondSection(t *testing.T) {
+	t.Parallel()
+	// The shape of all 13 two-section skills in the real books.
+	in := "# Body\n\n## Related skills (Stage 3 Filling)\n\n" +
+		"- depends-on: `alpha` — first\n" +
+		"- contrasts-with: (prose, not a skill)\n\n" +
+		"---\n\n" +
+		"## Related Skills\n\n" +
+		"- composes-with: `beta` — second\n" +
+		"- depends-on: `alpha` — restated in other words\n\n" +
+		"---\n\n" +
+		"## Audit Information\n"
+	want := "# Body\n\n## Related Skills\n\n" +
+		"- depends-on: `alpha` — first\n" +
+		"- contrasts-with: (prose, not a skill)\n" +
+		"- composes-with: `beta` — second\n\n" +
+		"---\n\n" +
+		"## Audit Information\n"
+
+	got, changed := related.Normalize(in)
+	if !changed {
+		t.Fatal("expected a two-section file to change")
+	}
+	if got != want {
+		t.Errorf("merge mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
+	if again, changedAgain := related.Normalize(got); changedAgain || again != got {
+		t.Errorf("merging must be idempotent, second pass:\n%s", again)
+	}
+}
+
+func TestNormalizeMergeKeepsEveryEdgeAndTheFirstRationale(t *testing.T) {
+	t.Parallel()
+	in := "## Related Skills\n\n- depends-on: `alpha` — the reason that was written first\n\n" +
+		"## Related Skills\n\n- depends-on: `alpha` — a later, different reason\n" +
+		"- composes-with: `beta` — only in the second section\n"
+
+	out, _ := related.Normalize(in)
+	if strings.Count(out, "## Related Skills") != 1 {
+		t.Errorf("expected one section after merging, got:\n%s", out)
+	}
+	if strings.Count(out, "`alpha`") != 1 {
+		t.Errorf("the repeated relationship should be written once, got:\n%s", out)
+	}
+	if !strings.Contains(out, "the reason that was written first") {
+		t.Errorf("the first section's rationale should win, got:\n%s", out)
+	}
+	if !strings.Contains(out, "- composes-with: `beta` — only in the second section") {
+		t.Errorf("an edge unique to the second section was lost:\n%s", out)
+	}
+}
+
+func TestNormalizeLeavesASecondSectionHoldingProseWhereItIs(t *testing.T) {
+	t.Parallel()
+	// Merging would have to delete the paragraph or move it somewhere it does not
+	// belong. Leaving the section in place is the smaller harm, and it is still
+	// canonicalised where it can be.
+	in := "## Related Skills\n\n- depends-on: `alpha` — first\n\n" +
+		"## Related skills (Stage 3 Filling)\n\n" +
+		"These edges were added by hand and still need review.\n\n" +
+		"- **composes-with** → [`beta`](../beta/SKILL.md): second\n"
+
+	out, _ := related.Normalize(in)
+	if strings.Count(out, "## Related Skills") != 2 {
+		t.Errorf("a section holding prose must not be merged away, got:\n%s", out)
+	}
+	if !strings.Contains(out, "These edges were added by hand and still need review.") {
+		t.Errorf("prose was lost:\n%s", out)
+	}
+	if !strings.Contains(out, "- composes-with: `beta` — second") {
+		t.Errorf("the unmerged section was not canonicalised:\n%s", out)
+	}
+	if again, changedAgain := related.Normalize(out); changedAgain || again != out {
+		t.Errorf("the unmerged case must still be idempotent, second pass:\n%s", again)
+	}
+}
+
+func TestNormalizeMergeMovesABulletItCannotParse(t *testing.T) {
+	t.Parallel()
+	// The real second sections write "**depends_on**" with an underscore, which is not
+	// a known kind. Those lines carry the only rationale anyone wrote, so they move
+	// verbatim rather than being dropped with the heading.
+	in := "## Related Skills\n\n- depends-on: `alpha` — first\n\n" +
+		"## Related Skills\n\n- **depends_on**: alpha — a kind spelt with an underscore\n"
+
+	out, _ := related.Normalize(in)
+	if strings.Count(out, "## Related Skills") != 1 {
+		t.Errorf("expected one section after merging, got:\n%s", out)
+	}
+	if !strings.Contains(out, "- **depends_on**: alpha — a kind spelt with an underscore") {
+		t.Errorf("an unparsed bullet was dropped instead of moved:\n%s", out)
 	}
 }

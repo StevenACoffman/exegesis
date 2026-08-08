@@ -77,9 +77,12 @@ func isBulletLine(trimmed string) bool {
 //   - depends-on: [slug](../slug/SKILL.md) — why
 //   - **slug** (composes-with): why                   (reversed)
 //   - depends-on: slug (why)                          (bare token)
+//   - **superseded-by**: merged/run/slug — why        (bold kind, colon, qualified)
 //
-// ok is false for a line that is not a bullet, whose kind is not one of the three
-// known kinds, or that names no resolvable target — a bullet whose "target" is
+// A target may be tree-qualified in any of these — see isTarget.
+//
+// ok is false for a line that is not a bullet, whose kind is not one of the known
+// kinds, or that names no resolvable target — a bullet whose "target" is
 // prose, such as "- contrasts-with: (traditional headcount-scaling model)", names
 // no skill and so yields no edge.
 //
@@ -139,14 +142,32 @@ func splitKind(rest string) (Kind, string, bool) {
 	return kind, strings.TrimSpace(tail), true
 }
 
-// splitKindForward takes the kind name off the two kind-first orientations:
-// "**kind** ..." (where any ":" belongs to the rationale, not to the kind) and
-// "kind: ...".
+// splitKindForward takes the kind name off the two kind-first orientations,
+// "**kind** ..." and "kind: ...", leaving the separator handling to afterBoldKind for
+// the bold form.
 func splitKindForward(rest string) (name, tail string, ok bool) {
 	if bold, isBold := boldToken(rest); isBold {
-		return bold, strings.TrimPrefix(strings.TrimSpace(afterBold(rest)), "→"), true
+		return bold, afterBoldKind(rest), true
 	}
 	return strings.Cut(rest, ":")
+}
+
+// afterBoldKind returns what follows a bold kind, without the separator the dialect
+// puts between the kind and its target.
+//
+// Both separators are real: "→" is what the linked-target family writes, and ":" is
+// what all 26 `superseded-by` bullets in the books write. Only "→" was stripped, so
+// `- **depends-on**: some-skill` — bold kind, colon, bare target — parsed as no edge
+// at all, for every kind. Measured with a probe against the pre-change reader before
+// this was widened, rather than assumed from the shape of the code.
+func afterBoldKind(rest string) string {
+	tail := strings.TrimSpace(afterBold(rest))
+	for _, separator := range []string{"→", ":"} {
+		if trimmed, found := strings.CutPrefix(tail, separator); found {
+			return strings.TrimSpace(trimmed)
+		}
+	}
+	return tail
 }
 
 // splitReversed matches the "**slug** (kind): why" orientation. It returns the slug
@@ -236,7 +257,7 @@ func takeOneTarget(s string) (target, after string, ok bool) {
 	}
 	if inner, found := strings.CutPrefix(s, "`"); found {
 		slug, tail, closed := strings.Cut(inner, "`")
-		if !closed || !isSlug(slug) {
+		if !closed || !isTarget(slug) {
 			return "", "", false
 		}
 		return slug, tail, true
@@ -244,7 +265,7 @@ func takeOneTarget(s string) (target, after string, ok bool) {
 	// A bare token counts only when it is unmistakably a slug, so that prose such
 	// as "(traditional headcount-scaling model)" yields no target.
 	token, tail := cutToken(s)
-	if !isSlug(token) {
+	if !isTarget(token) {
 		return "", "", false
 	}
 	return token, tail, true
@@ -255,9 +276,9 @@ func bareOrQuoted(label string) (string, bool) {
 	trimmed := strings.TrimSpace(label)
 	if inner, found := strings.CutPrefix(trimmed, "`"); found {
 		slug, _, closed := strings.Cut(inner, "`")
-		return slug, closed && isSlug(slug)
+		return slug, closed && isTarget(slug)
 	}
-	return trimmed, isSlug(trimmed)
+	return trimmed, isTarget(trimmed)
 }
 
 // skipLinkPath drops a "(path)" immediately following a link label.
@@ -285,6 +306,26 @@ func cutToken(s string) (token, rest string) {
 // rationale.
 func trimRationale(s string) string {
 	return strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(s), ":—-→,"))
+}
+
+// isTarget reports whether s is a skill reference: a slug, or a tree-qualified path
+// of slugs such as "merged/all-books-v1/some-skill".
+//
+// Every segment must be a strict slug, so the tolerance costs almost nothing on the
+// prose-rejection side: "(traditional headcount-scaling model)" still names no skill.
+// The residual case is a bare two-word phrase joined by a slash — "and/or" reads as a
+// target — which is the same residual the bare-slug rule already carries and which no
+// bullet in the corpus exhibits. Narrowing it would mean refusing bare qualified
+// tokens, and all 26 real cross-tree bullets are written exactly that way.
+//
+// Ensures: isTarget(s) implies every "/"-separated segment satisfies isSlug; it is pure.
+func isTarget(s string) bool {
+	for _, segment := range strings.Split(s, "/") {
+		if !isSlug(segment) {
+			return false
+		}
+	}
+	return true
 }
 
 // isSlug reports whether s is a strict Agent Skills slug: one or more

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/StevenACoffman/exegesis/internal/textnorm"
 	"github.com/StevenACoffman/skillet/redlines"
 )
 
@@ -25,10 +26,6 @@ import (
 // be a split artifact as a fabrication. Reporting those would bury the findings that
 // mean something.
 const MinPassageWords = 6
-
-// reSpace matches any run of whitespace, including the newlines a quotation is wrapped
-// across in Markdown but not in an extracted source text.
-var reSpace = regexp.MustCompile(`\s+`)
 
 // reSentence matches the sentence terminators a quotation is split on.
 var reSentence = regexp.MustCompile(`[.!?]+`)
@@ -63,10 +60,11 @@ func (f Finding) Missing() bool { return f.FoundIn == "" }
 // Per passage, a fabricated sentence inserted into an otherwise faithful quotation is
 // caught and named, which is the subtle case that matters most.
 //
-// Both sides are normalized before matching — whitespace runs collapsed, typographic
-// characters folded to ASCII — because a quotation is line-wrapped in Markdown and its
-// source is not, so a literal comparison would report everything missing. That
-// normalization is the whole of the mechanical latitude given.
+// Both sides are folded before matching — whitespace runs collapsed, typographic
+// characters folded to ASCII (textnorm.Fold, shared with a2check so two guards cannot
+// disagree about what counts as the same words) — because a quotation is line-wrapped in
+// Markdown and its source is not, so a literal comparison would report everything
+// missing. That folding is the whole of the mechanical latitude given.
 //
 // Ensures: one Finding per checked passage, in document order; it is pure.
 func Check(body, segment string, sources []Source) []Finding {
@@ -78,13 +76,13 @@ func Check(body, segment string, sources []Source) []Finding {
 	// multiply that cost by the number of passages for no benefit.
 	haystacks := make([]string, len(sources))
 	for i, s := range sources {
-		haystacks[i] = normalize(s.Text)
+		haystacks[i] = textnorm.Fold(s.Text)
 	}
 	var findings []Finding
 	for _, q := range quotes {
 		for _, p := range Passages(q) {
 			f := Finding{Passage: p}
-			needle := normalize(p)
+			needle := textnorm.Fold(p)
 			for i, h := range haystacks {
 				if strings.Contains(h, needle) {
 					f.FoundIn = sources[i].Name
@@ -95,6 +93,31 @@ func Check(body, segment string, sources []Source) []Finding {
 		}
 	}
 	return findings
+}
+
+// Support returns how many of findings were located in a source: the countable half of
+// book2skill's V1, which asks whether the book really contains supporting evidence for
+// the unit a skill was distilled from.
+//
+// Support is measured in passages rather than quotations because a quotation is not a
+// unit of evidence here: 95% of this corpus writes the whole R segment as a single
+// blockquote, so a quotation count is 1 for nearly every skill and a threshold of two
+// could never be met by a faithful skill.
+//
+// It counts located passages, not independent ones. Two passages taken from the same
+// paragraph are two here and one to V1, and whether a passage supports the unit at all
+// is a judgment no containment check can make. A threshold on this number gates the
+// half that can be counted; it does not decide V1.
+//
+// Ensures: 0 <= result <= len(findings); Support(nil) == 0; it is pure.
+func Support(findings []Finding) int {
+	located := 0
+	for _, f := range findings {
+		if !f.Missing() {
+			located++
+		}
+	}
+	return located
 }
 
 // Passages splits a quotation into the chunks matched individually: sentences, dropped
@@ -142,31 +165,6 @@ func Segment(body, want string) string {
 		}
 	}
 	return strings.Join(out, "\n")
-}
-
-// typographic folds the characters a book and its plain-text extraction are most likely
-// to disagree about. A guard that fired on every curly apostrophe would not get run.
-//
-// The two space-like entries are written as escapes on purpose: a literal non-breaking
-// or zero-width space in source is invisible, so a later reader could neither tell what
-// the entry does nor notice if it were silently edited away.
-//
-// Built per call rather than kept in a package variable: it is microseconds against
-// reading whole books off disk, and a package-level Replacer is shared state.
-func typographic() *strings.Replacer {
-	return strings.NewReplacer(
-		"\u2018", "'", "\u2019", "'", // curly single quotes
-		"\u201c", `"`, "\u201d", `"`, // curly double quotes
-		"\u2013", "-", "\u2014", "-", // en and em dash
-		"\u2026", "...", // ellipsis
-		"\u00a0", " ", // non-breaking space
-		"\u200b", "", // zero-width space
-	)
-}
-
-// normalize reduces text to the form both sides are compared in.
-func normalize(s string) string {
-	return strings.TrimSpace(reSpace.ReplaceAllString(typographic().Replace(s), " "))
 }
 
 // leadingAlnum returns the leading run of letters and digits in s.
