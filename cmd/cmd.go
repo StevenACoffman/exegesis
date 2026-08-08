@@ -16,6 +16,7 @@ import (
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 
+	"github.com/StevenACoffman/exegesis/cmd/a2check"
 	"github.com/StevenACoffman/exegesis/cmd/distill"
 	"github.com/StevenACoffman/exegesis/cmd/index"
 	"github.com/StevenACoffman/exegesis/cmd/link"
@@ -55,6 +56,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	quotecheck.New(r)
 	mergestatus.New(r)
 	mergemigrate.New(r)
+	a2check.New(r)
 	// register new commands here
 
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("EXEGESIS")); err != nil {
