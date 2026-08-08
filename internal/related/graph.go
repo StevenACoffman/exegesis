@@ -81,18 +81,26 @@ func Mermaid(nodes []Node) string {
 	return b.String()
 }
 
-// DanglingEdges returns every edge in nodes whose target is not one of nodes' own
-// slugs — exactly the edges LearningPath and Mermaid silently drop — ordered by
+// DanglingEdges returns every edge in nodes whose target is a bare slug that is not
+// one of nodes' own — the edges LearningPath and Mermaid silently drop — ordered by
 // source, then kind, then target so a report of them is deterministic.
 //
-// Ensures: the result is empty iff Mermaid renders an edge line for every edge in
-// nodes; it is pure.
+// A Qualified target is skipped rather than reported. It names a skill in another
+// tree, which this function cannot see: it is given one tree's nodes, and answering
+// for a sibling tree would mean reading the filesystem from a pure function. Calling
+// them all dangling would be a false positive on every real cross-tree edge — 35 of
+// them in the books today — which is the fastest way to teach a reader to ignore this
+// report. The existence of a qualified target is checked at authorship time instead,
+// by `relate` and `link`, which know the tree path and may do I/O.
+//
+// Ensures: the result is empty iff Mermaid renders an edge line for every edge whose
+// target is not Qualified; it is pure.
 func DanglingEdges(nodes []Node) []DanglingEdge {
 	_, known := slugSet(nodes)
 	var out []DanglingEdge
 	for _, n := range nodes {
 		for _, e := range n.Edges {
-			if !known[e.Target] {
+			if !known[e.Target] && !Qualified(e.Target) {
 				out = append(out, DanglingEdge{Source: n.Slug, Edge: e})
 			}
 		}
@@ -115,13 +123,17 @@ func DanglingEdges(nodes []Node) []DanglingEdge {
 // command about to record an edge asks it whether the endpoints exist, instead of
 // discovering the answer from a later index that quietly omits them.
 //
-// Ensures: the result is empty iff every want is a slug in nodes; it is pure.
+// Qualified targets are skipped for the reason given on DanglingEdges — they name
+// another tree — so a caller that accepts them must resolve them on disk itself.
+//
+// Ensures: the result is empty iff every want that is not Qualified is a slug in
+// nodes; it is pure.
 func UnknownSlugs(nodes []Node, want []string) []string {
 	_, known := slugSet(nodes)
 	seen := make(map[string]bool, len(want))
 	var out []string
 	for _, w := range want {
-		if known[w] || seen[w] {
+		if known[w] || seen[w] || Qualified(w) {
 			continue
 		}
 		seen[w] = true

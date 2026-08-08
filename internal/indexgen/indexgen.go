@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/StevenACoffman/exegesis/internal/related"
 	"github.com/StevenACoffman/skillet/naming"
@@ -83,4 +84,35 @@ func readFile(path string) string {
 		return ""
 	}
 	return string(b)
+}
+
+// MissingQualified returns the tree-qualified targets among want that name no skill on
+// disk, sorted and deduplicated. A target that is not qualified is skipped: it belongs
+// to the tree itself, which related.UnknownSlugs answers without touching the disk.
+//
+// Qualified targets are resolved against the parent of tree, because that is what the
+// form means — "merged/all-books-v1/some-skill" alongside "site-reliability-engineering"
+// are siblings under one books root. This is the half of the graph check that
+// related.DanglingEdges cannot do: it is given one tree's nodes and cannot see a
+// sibling, so a cross-tree edge is checked here, at authorship time, or nowhere.
+//
+// A target is present when the directory holds a SKILL.md — the same thing that makes a
+// directory a skill everywhere else.
+func MissingQualified(tree string, want []string) []string {
+	root := filepath.Dir(tree)
+	seen := make(map[string]bool, len(want))
+	var out []string
+	for _, target := range want {
+		if !related.Qualified(target) || seen[target] {
+			continue
+		}
+		seen[target] = true
+		if _, err := os.Stat(
+			filepath.Join(root, filepath.FromSlash(target), "SKILL.md"),
+		); err != nil {
+			out = append(out, target)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

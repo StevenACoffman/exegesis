@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -82,8 +83,8 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 func (cfg *Config) edge() (related.Edge, error) {
 	kind := related.Kind(cfg.Kind)
 	if !kind.Valid() {
-		return related.Edge{}, root.Usagef(
-			"link: --kind must be depends-on, contrasts-with, or composes-with (got %q)", cfg.Kind)
+		return related.Edge{}, root.Usagef("link: --kind must be one of %s (got %q)",
+			kindList(), cfg.Kind)
 	}
 	if cfg.To == "" {
 		return related.Edge{}, root.Usagef("link: --to is required")
@@ -91,7 +92,32 @@ func (cfg *Config) edge() (related.Edge, error) {
 	if cfg.Rationale == "" {
 		return related.Edge{}, root.Usagef("link: --rationale is required")
 	}
-	return related.Edge{Kind: kind, Target: skill.Slug(cfg.To), Rationale: cfg.Rationale}, nil
+	return related.Edge{Kind: kind, Target: canonicalTarget(cfg.To), Rationale: cfg.Rationale}, nil
+}
+
+// kindList renders the known kinds for a usage message, reading related.Kinds so the
+// message cannot name a different set from the one Valid accepts.
+func kindList() string {
+	kinds := related.Kinds()
+	names := make([]string, 0, len(kinds))
+	for _, k := range kinds {
+		names = append(names, string(k))
+	}
+	return strings.Join(names, ", ")
+}
+
+// canonicalTarget normalizes --to the way `index` keys skills, per path segment.
+//
+// skill.Slug folds every non-alphanumeric run to a hyphen, so slugging a whole
+// tree-qualified target would turn "merged/all-books-v1/some-skill" into one slug named
+// "merged-all-books-v1-some-skill" — an edge pointing at a skill that cannot exist,
+// written silently. Segments are slugged individually and rejoined.
+func canonicalTarget(to string) string {
+	segments := strings.Split(to, "/")
+	for i, segment := range segments {
+		segments[i] = skill.Slug(segment)
+	}
+	return strings.Join(segments, "/")
 }
 
 // warnUnknownTarget reports that target is not a skill alongside dir, which means
@@ -113,5 +139,10 @@ func (cfg *Config) warnUnknownTarget(dir, target string) {
 	if len(related.UnknownSlugs(nodes, []string{target})) > 0 {
 		_, _ = fmt.Fprintf(cfg.Stdout,
 			"link: warning: no skill %q in %s — index will drop this edge\n", target, tree)
+		return
+	}
+	if len(indexgen.MissingQualified(tree, []string{target})) > 0 {
+		_, _ = fmt.Fprintf(cfg.Stdout,
+			"link: warning: no skill %q under %s\n", target, filepath.Dir(tree))
 	}
 }

@@ -208,3 +208,65 @@ func countHeadings(md string) int {
 	}
 	return n
 }
+
+func TestParseSectionReadsQualifiedTargets(t *testing.T) {
+	t.Parallel()
+	// The form the real books already use for cross-tree links: 26 superseded-by
+	// bullets and 9 on the other kinds, none of which parsed before.
+	cases := map[string]struct {
+		bullet string
+		want   related.Edge
+	}{
+		"superseded-by, bold kind, bare qualified token": {
+			bullet: "- **superseded-by**: merged/all-books-v1/merged-skill — replaced by the merge",
+			want: related.Edge{
+				Kind:      related.SupersededBy,
+				Target:    "merged/all-books-v1/merged-skill",
+				Rationale: "replaced by the merge",
+			},
+		},
+		"depends-on, canonical, backticked qualified target": {
+			bullet: "- depends-on: `other-book/some-skill` — needs it first",
+			want: related.Edge{
+				Kind:      related.DependsOn,
+				Target:    "other-book/some-skill",
+				Rationale: "needs it first",
+			},
+		},
+		"composes-with, linked qualified target": {
+			bullet: "- **composes-with** → [`other-book/some-skill`](../../other-book/some-skill/SKILL.md): together",
+			want: related.Edge{
+				Kind:      related.ComposesWith,
+				Target:    "other-book/some-skill",
+				Rationale: "together",
+			},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got := related.ParseSection("## Related Skills\n\n" + tc.bullet + "\n")
+			if len(got) != 1 || got[0] != tc.want {
+				t.Errorf("ParseSection = %#v, want one %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseSectionStillRejectsProseWithSlashes(t *testing.T) {
+	t.Parallel()
+	// Tolerating a path must not turn prose into edges: every segment has to be a
+	// strict slug, so a sentence containing a slash names no skill.
+	for name, bullet := range map[string]string{
+		"prose in parentheses": "- superseded-by: (the read/write split we abandoned)",
+		"capitalised path":     "- superseded-by: Merged/All-Books/Skill",
+		"trailing separator":   "- superseded-by: merged/all-books-v1/",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if got := related.ParseSection("## Related Skills\n\n" + bullet + "\n"); got != nil {
+				t.Errorf("ParseSection = %#v, want no edges", got)
+			}
+		})
+	}
+}

@@ -1,6 +1,7 @@
 // Package related is the pure model behind `exegesis link` and `exegesis index`:
-// the related-skill edges recorded in a skill's `## Related skills` section, plus
-// the parse/serialize of that section (related.go), the older bullet dialects still
+// the related-skill edges recorded in a skill's `## Related skills` sections — a file
+// may hold more than one, and they are read as a single set — plus the
+// parse/serialize of those sections (related.go), the older bullet dialects still
 // tolerated on read (dialects.go), the graph those edges form (graph.go), and the
 // INDEX.md rendered from them (index.go). Every function is
 // pure — text in, text out, no I/O and no globals — so the commands own the file
@@ -9,6 +10,7 @@ package related
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -33,6 +35,15 @@ const (
 	ContrastsWith Kind = "contrasts-with"
 	// ComposesWith means the two skills are used together.
 	ComposesWith Kind = "composes-with"
+	// SupersededBy means a merge run replaced the source skill with the target,
+	// which usually lives in another tree — see Qualified.
+	//
+	// It is terminal where the other three relate skills that both live, but it
+	// changes nothing about how a skill is presented: a superseded skill keeps its
+	// place in the skill list and the learning path, because merge-skills retains
+	// source skills as the audit trail of what was merged, and the path is ordered
+	// on DependsOn alone.
+	SupersededBy Kind = "superseded-by"
 )
 
 // Kind is the relationship a related-skill edge expresses. Only the three known
@@ -65,14 +76,47 @@ type logicalBullet struct {
 	end   int    // one past the index of its last line
 }
 
-// Valid reports whether k is one of the three known kinds.
+// section is one related-skills section's line span: head is its heading line, end
+// is one past its last line — the next heading, or the end of the file.
+//
+// A file may hold more than one: 13 skills in the real books carry a second section,
+// typically a suffixed heading followed by a plain one, and a reader that stopped at
+// the first silently dropped everything the second declared.
+type section struct {
+	head int
+	end  int
+}
+
+// Kinds returns the known edge kinds, in the order a caller should offer them.
+// It is the vocabulary itself, so Valid and every usage message read from one
+// definition and cannot list different kinds.
+func Kinds() []Kind {
+	return []Kind{DependsOn, ContrastsWith, ComposesWith, SupersededBy}
+}
+
+// Valid reports whether k is one of the known kinds.
 func (k Kind) Valid() bool {
-	switch k {
-	case DependsOn, ContrastsWith, ComposesWith:
-		return true
-	default:
-		return false
+	for _, known := range Kinds() {
+		if k == known {
+			return true
+		}
 	}
+	return false
+}
+
+// Qualified reports whether target names a skill in another tree, written as a
+// path — "merged/all-books-v1/some-skill" rather than a bare slug.
+//
+// The form is not new and is not specific to SupersededBy: 26 superseded-by bullets
+// and 9 on the other three kinds already write it in the real books, and
+// merge-skills' Phase 3 prescribes it for cross-book links of any kind. It is a
+// property of a target, so nothing here branches on the edge's kind.
+//
+// A qualified target resolves against the parent of the tree being read, which is a
+// directory a pure function cannot see. That is why the graph gate skips these and
+// the commands check them instead — see DanglingEdges.
+func Qualified(target string) bool {
+	return strings.Contains(target, "/")
 }
 
 // Bullet renders e in the exact canonical form the section uses:
@@ -82,67 +126,70 @@ func Bullet(e Edge) string {
 	return fmt.Sprintf("- %s: `%s` — %s", e.Kind, e.Target, e.Rationale)
 }
 
-// ParseSection returns the edges in md's `## Related skills` section, in file
-// order, skipping any bullet whose kind is not Valid or that names no skill. md may
-// be a full SKILL.md or just its body. Bullets inside code fences are ignored.
+// ParseSection returns the edges declared in every `## Related skills` section of md,
+// skipping any bullet whose kind is not Valid or that names no skill. md may be a full
+// SKILL.md or just its body. Bullets inside code fences are ignored.
 //
 // Reading is tolerant of every bullet dialect found in real trees (see
 // dialects.go), so a section written before the canonical format settled still
 // yields its edges instead of being silently ignored. A bullet naming several
 // targets yields one edge per target.
 //
-// Edges are deduplicated by (Kind, Target), first occurrence winning: the section
-// expresses a set of relationships, and once legacy and canonical bullets coexist in
-// one section — which happens the first time `relate` runs over legacy content — the
-// same relationship would otherwise be reported twice.
+// Edges are deduplicated by (Kind, Target), first occurrence winning: a section
+// expresses a set of relationships, and once legacy and canonical bullets coexist —
+// which happens the first time `relate` runs over legacy content, and in every file
+// carrying two sections — the same relationship would otherwise be reported twice.
+//
+// The result is sorted by kind, then target, rather than left in file order. A
+// relationship means the same thing whichever of a file's sections happens to state
+// it, so the reader's answer should not depend on that; sorting also makes merging two
+// sections produce one order rather than an order that records which section won.
+// Nothing downstream reads file order: Mermaid sorts its edge lines, DanglingEdges
+// sorts, LearningPath only counts indegrees, and INDEX.md never lists a skill's edges.
+//
+// Ensures: the result is sorted and holds no two edges with the same (Kind, Target);
+// it is pure.
 func ParseSection(md string) []Edge {
 	lines := strings.Split(md, "\n")
-	head, end, found := findSection(lines)
-	if !found {
-		return nil
-	}
 	var edges []Edge
 	seen := make(map[edgeKey]bool)
-	for _, b := range sectionBullets(lines, head, end) {
-		parsed, ok := readBullet(b.text)
-		if !ok {
-			continue
-		}
-		for _, e := range parsed {
-			key := edgeKey{kind: e.Kind, target: e.Target}
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			edges = append(edges, e)
+	for _, sec := range findSections(lines) {
+		for _, b := range sectionBullets(lines, sec.head, sec.end) {
+			fresh, _ := newEdges(b.text, seen)
+			edges = append(edges, fresh...)
 		}
 	}
+	sortEdges(edges)
 	return edges
 }
 
-// Upsert returns md with e recorded in its `## Related skills` section and
-// whether md changed. It is idempotent by (Kind, Target): an identical bullet is
-// a no-op; a bullet with the same kind and target but a different rationale is
-// rewritten in place; otherwise the bullet is appended (creating the section at
-// end of file when absent). md is never mutated.
+// Upsert returns md with e recorded in a `## Related skills` section and whether md
+// changed. It is idempotent by (Kind, Target): an identical bullet is a no-op; a
+// bullet with the same kind and target but a different rationale is rewritten in
+// place; otherwise the bullet is appended (creating the section at end of file when
+// absent). md is never mutated.
+//
+// An existing bullet is looked for in every section but a new one is written to the
+// first, so a file carrying two sections does not gain a duplicate bullet the first
+// time `relate` or `link` records a relationship its second section already states.
 //
 // Requires: e.Kind.Valid() and e.Target != "".
 // Ensures:  ParseSection(out) contains e; Upsert(out, e) == (out, false).
 func Upsert(md string, e Edge) (string, bool) {
 	lines := strings.Split(md, "\n")
-	head, end, found := findSection(lines)
-	if !found {
+	secs := findSections(lines)
+	if len(secs) == 0 {
 		return appendSection(md, e), true
 	}
 	bullet := Bullet(e)
-	if at := findEdge(lines, head+1, end, e.Kind, e.Target); at >= 0 {
+	if at := findEdge(lines, secs, e.Kind, e.Target); at >= 0 {
 		if lines[at] == bullet {
 			return md, false
 		}
 		lines[at] = bullet
 		return strings.Join(lines, "\n"), true
 	}
-	at := insertAt(lines, head+1, end)
+	at := insertAt(lines, secs[0])
 	out := make([]string, 0, len(lines)+1)
 	out = append(out, lines[:at]...)
 	out = append(out, bullet)
@@ -163,12 +210,19 @@ func UpsertAll(md string, edges []Edge) (string, bool) {
 	return out, changed
 }
 
-// findSection returns the [head, end) line range of the `## Related skills`
-// section: head is the heading line index, end is the first line after the
-// section (the next heading, or len(lines)). found is false when no such
-// heading exists outside a code fence.
-func findSection(lines []string) (head, end int, found bool) {
-	head = -1
+// findSections returns every related-skills section in lines, in file order. A
+// section runs from its heading to the next heading of any level, or to the end of
+// the file; headings inside a code fence are text, not boundaries.
+//
+// Returning all of them rather than the first is what makes a second section
+// visible: 13 skills in the real books carry one, and everything it declared used to
+// be dropped without a word.
+//
+// Ensures: the spans are ascending and non-overlapping, and each head is a heading
+// line satisfying isSectionHeading; it is pure.
+func findSections(lines []string) []section {
+	var out []section
+	open := -1
 	inFence := false
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -176,38 +230,77 @@ func findSection(lines []string) (head, end int, found bool) {
 			inFence = !inFence
 			continue
 		}
-		if inFence {
+		if inFence || !isHeading(trimmed) {
 			continue
 		}
-		switch {
-		case head < 0 && isSectionHeading(trimmed):
-			head = i
-		case head >= 0 && isHeading(trimmed):
-			return head, i, true
+		if open >= 0 {
+			out = append(out, section{head: open, end: i})
+			open = -1
+		}
+		if isSectionHeading(trimmed) {
+			open = i
 		}
 	}
-	if head < 0 {
-		return -1, -1, false
+	if open >= 0 {
+		out = append(out, section{head: open, end: len(lines)})
 	}
-	return head, len(lines), true
+	return out
 }
 
-// findEdge returns the line index in [start, end) of the first bullet with the
-// given kind and target, or -1.
-func findEdge(lines []string, start, end int, k Kind, target string) int {
-	for i := start; i < end; i++ {
-		if e, ok := parseBullet(lines[i]); ok && e.Kind == k && e.Target == target {
-			return i
+// newEdges returns the edges of one bullet that are not already in seen, recording
+// them there, and whether the bullet was understood at all. It is the shared body of
+// the read and normalize paths, so the two cannot disagree about which repeat of a
+// relationship is the one that counts.
+//
+// The two answers are distinct: a bullet naming only relationships already seen is
+// understood and yields nothing, while a bullet naming no skill is not understood and
+// must be preserved verbatim by the caller that rewrites files.
+func newEdges(bullet string, seen map[edgeKey]bool) ([]Edge, bool) {
+	parsed, understood := readBullet(bullet)
+	if !understood {
+		return nil, false
+	}
+	out := make([]Edge, 0, len(parsed))
+	for _, e := range parsed {
+		key := edgeKey{kind: e.Kind, target: e.Target}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, e)
+	}
+	return out, true
+}
+
+// sortEdges orders edges by kind, then target: the canonical order, independent of
+// which section or dialect each edge was written in.
+func sortEdges(edges []Edge) {
+	sort.Slice(edges, func(i, j int) bool {
+		if edges[i].Kind != edges[j].Kind {
+			return edges[i].Kind < edges[j].Kind
+		}
+		return edges[i].Target < edges[j].Target
+	})
+}
+
+// findEdge returns the line index of the first bullet in any of secs with the given
+// kind and target, or -1.
+func findEdge(lines []string, secs []section, k Kind, target string) int {
+	for _, sec := range secs {
+		for i := sec.head + 1; i < sec.end; i++ {
+			if e, ok := parseBullet(lines[i]); ok && e.Kind == k && e.Target == target {
+				return i
+			}
 		}
 	}
 	return -1
 }
 
-// insertAt returns the index just after the last bullet in [start, end), or
-// start when the section has no bullets yet.
-func insertAt(lines []string, start, end int) int {
-	at := start
-	for i := start; i < end; i++ {
+// insertAt returns the index just after the last bullet of sec, or the line after
+// its heading when the section has no bullets yet.
+func insertAt(lines []string, sec section) int {
+	at := sec.head + 1
+	for i := at; i < sec.end; i++ {
 		if _, ok := parseBullet(lines[i]); ok {
 			at = i + 1
 		}

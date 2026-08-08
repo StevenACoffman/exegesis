@@ -98,7 +98,8 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	return nil
 }
 
-// checkEndpoints reports every from/to slug in groups that is not a skill under tree.
+// checkEndpoints reports every from/to slug in groups that is not a skill under tree,
+// resolving a tree-qualified target against tree's parent.
 //
 // It runs before the first write, so a table with one bad endpoint leaves the book
 // untouched rather than half-applied: the write loop commits each group as it goes, so
@@ -120,6 +121,12 @@ func checkEndpoints(tree string, groups []relatelib.Group) error {
 	if unknown := related.UnknownSlugs(nodes, want); len(unknown) > 0 {
 		return fmt.Errorf("relate: no such skill under %s: %s",
 			tree, strings.Join(unknown, ", "))
+	}
+	// A tree-qualified target names a sibling tree, which UnknownSlugs cannot see and
+	// the graph gate deliberately skips. Resolving it here is the only check it gets.
+	if missing := indexgen.MissingQualified(tree, want); len(missing) > 0 {
+		return fmt.Errorf("relate: no such skill under %s: %s",
+			filepath.Dir(tree), strings.Join(missing, ", "))
 	}
 	return nil
 }
