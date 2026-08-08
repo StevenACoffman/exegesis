@@ -233,3 +233,38 @@ func TestCheckIgnoresQuotationsInsideCodeFences(t *testing.T) {
 		t.Errorf("fenced content was treated as a quotation: %+v", got)
 	}
 }
+
+func TestSupportCountsLocatedPassages(t *testing.T) {
+	t.Parallel()
+	located := quotecheck.Finding{Passage: "found", FoundIn: "book.txt"}
+	missing := quotecheck.Finding{Passage: "not found"}
+	cases := map[string]struct {
+		findings []quotecheck.Finding
+		want     int
+	}{
+		"nothing checked":  {findings: nil, want: 0},
+		"all located":      {findings: []quotecheck.Finding{located, located}, want: 2},
+		"none located":     {findings: []quotecheck.Finding{missing, missing}, want: 0},
+		"some located":     {findings: []quotecheck.Finding{located, missing, located}, want: 2},
+		"a single passage": {findings: []quotecheck.Finding{located}, want: 1},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if got := quotecheck.Support(tc.findings); got != tc.want {
+				t.Errorf("Support = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSupportOfASkillWithNoQuotationsIsZero(t *testing.T) {
+	t.Parallel()
+	// The case a --min-support threshold must fail rather than wave through: a skill
+	// quoting nothing has no evidence at all, which Check reports as no findings.
+	got := quotecheck.Check("## R\n\nplain prose only\n", "R",
+		[]quotecheck.Source{{Name: "s", Text: "plain prose only"}})
+	if n := quotecheck.Support(got); n != 0 {
+		t.Errorf("Support of a skill with no quotations = %d, want 0", n)
+	}
+}
