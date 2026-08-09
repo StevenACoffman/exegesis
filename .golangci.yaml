@@ -23,6 +23,9 @@ formatters:
     paths:
       - generated
       - node_modules
+      # internal/atomicfile is vendored third-party code (Tailscale, BSD-3-Clause,
+      # with its own windows/notwindows syscall variants). Not adh's to restyle.
+      - internal/atomicfile
 
 linters:
   default: none
@@ -282,6 +285,10 @@ linters:
       extra-ignore-sigs:
         - .Errorf(
         - fmt.Errorf(
+        # toerr's message-wrapping constructor: wraps the cause (Unwrap chain
+        # preserved) plus a message and trace frame — a genuine wrap, so wrapcheck
+        # should treat it like the built-in .Wrap(/.WithMessage( it already allows.
+        - .WrapWithMessage(
 
     # ── depguard ─────────────────────────────────────────────────────────────
     # spec.md: climax uses its own command pattern; no third-party CLI frameworks.
