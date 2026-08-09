@@ -3,6 +3,7 @@ package lint_test
 import (
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -239,17 +240,53 @@ func TestRedlines(t *testing.T) {
 	}
 }
 
+func TestSkillLensTier(t *testing.T) {
+	t.Parallel()
+	// lensCats returns the skilllens-* finding categories, in emission order.
+	lensCats := func(s *skill.Skill, opts lint.Options) []string {
+		var got []string
+		for _, d := range lint.Check(s, opts) {
+			if strings.HasPrefix(d.Category, "skilllens-") {
+				got = append(got, d.Category)
+			}
+		}
+		return got
+	}
+	body := func(b string) *skill.Skill {
+		return &skill.Skill{Dir: "/x/s", Name: "s", Description: "d", Body: b, Raw: "neutral"}
+	}
+
+	// Encodes failure (a "## Boundary" section) and hedges nothing: no skilllens gaps.
+	clean := body("## Steps\n\n1. do it\n\n## Boundary\n\nIf the request fails, retry once.\n")
+	if got := lensCats(clean, lint.Options{SkillLens: true}); len(got) != 0 {
+		t.Errorf("clean skill: got %v, want none", got)
+	}
+
+	// No failure branch, no boundary section, and >=3 softening phrases: all three fire.
+	weak := body("## Steps\n\nDo the thing as appropriate, feel free to adjust, it depends.\n")
+	want := []string{"skilllens-failure", "skilllens-softening", "skilllens-boundary"}
+	if got := lensCats(weak, lint.Options{SkillLens: true}); !slices.Equal(got, want) {
+		t.Errorf("weak skill: got %v, want %v", got, want)
+	}
+
+	// Off by default: without Options.SkillLens the tier is silent.
+	if got := lensCats(weak, lint.Options{}); len(got) != 0 {
+		t.Errorf("skilllens must be opt-in; got %v with SkillLens unset", got)
+	}
+}
+
 func TestParseCheck(t *testing.T) {
 	t.Parallel()
 	tests := map[string]struct {
 		value   string
-		want    bool
+		want    lint.Checks
 		wantErr bool
 	}{
-		"empty is off":   {"", false, false},
-		"redlines":       {"redlines", true, false},
-		"all":            {"all", true, false},
-		"unknown errors": {"bogus", false, true},
+		"empty is off":   {"", lint.Checks{}, false},
+		"redlines":       {"redlines", lint.Checks{Redlines: true}, false},
+		"skilllens":      {"skilllens", lint.Checks{SkillLens: true}, false},
+		"all is both":    {"all", lint.Checks{Redlines: true, SkillLens: true}, false},
+		"unknown errors": {"bogus", lint.Checks{}, true},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
