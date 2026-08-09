@@ -49,7 +49,7 @@ func New(parent *root.Config) *Config {
 	cfg.Flags.IntVar(&cfg.MaxDescWords, 0, "max-desc-words", 0,
 		"fail if the description exceeds this many words (0 = unlimited; overrides registry)")
 	cfg.Flags.StringVar(&cfg.Check, 0, "check", "",
-		"extra checks: redlines (or all) enforces the mechanical Quality Red Lines")
+		"extra checks: redlines (Quality Red Lines), skilllens (SkillLens quality tier), or all")
 	cfg.Command = &ff.Command{
 		Name:      "lint",
 		Usage:     "exegesis lint [--json] [--check redlines] [--registry PATH] SKILL_DIR ...",
@@ -118,13 +118,14 @@ func (cfg *Config) options() (lintlib.Options, error) {
 	if cfg.MaxDescWords > 0 {
 		opts.MaxDescriptionWords = cfg.MaxDescWords
 	}
-	redlines, err := lintlib.ParseCheck(cfg.Check)
+	checks, err := lintlib.ParseCheck(cfg.Check)
 	if err != nil {
 		// An invalid --check value is a usage error; internal/lint returns a plain
 		// error because a subpackage must not import the command layer to say so.
 		return opts, root.Usagef("lint: %w", err)
 	}
-	opts.Redlines = redlines
+	opts.Redlines = checks.Redlines
+	opts.SkillLens = checks.SkillLens
 	return opts, nil
 }
 

@@ -326,19 +326,17 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       `--migrate` adopts a foreign `test-prompts.json` (object wrapper, `prompts`/
       `test_prompts` keys, category-grouped arrays) into canonical form: `expected*` variants,
       type synonyms, renumbered ids, other fields preserved in `notes`.
-- [ ] **`exegesis verify --merge [--source-book A,B] [--strict]`** — one pass over a merged
-      tree: `MERGE_OVERVIEW.md` presence, per-skill lint, and the `tests --merge` gate;
-      `--source-book` additionally runs the a2check advisory across every merged skill.
-      **Measured need (2026-08-08):** default `verify` on `all-books-v1` reports
-      `unknown type "prefer_merged_over_source"` on every merged skill, because the default
-      composition is the three book2skill categories and `tests --merge` is the only place
-      that knows about the fourth. That is the whole justification for the flag: a merged tree
-      is validated under a different composition, not a laxer one. Also surfaced: three cases
-      carry an empty `expected`, which is a content fix in the tree, not a gate change.
-      The shape to reach for is a **profile** — the tree says which composition it is
-      validated under, and the gates read it — rather than a second code path per gate. Build
-      it here first; it earns promotion to skillet only on a second consumer, the way
-      `redlines` did.
+- [x] **`exegesis verify --merge`** — DONE (the measured blocker). `--merge` gates each
+      skill's test-prompts under the merged composition and requires `MERGE_OVERVIEW.md`.
+      The composition profile lives in `internal/testcomp.For(merged bool)`, which both
+      `tests` and `verify` now call, so the two cannot disagree about a merged tree (the
+      drift that let `verify` reject `prefer_merged_over_source` while `tests --merge`
+      accepted it). Verified end-to-end on `all-books-v1`: plain verify raised 72
+      unknown-type complaints, `--merge` drops them to 0 and reports `MERGE_OVERVIEW.md: ok`,
+      then surfaces the genuine empty-`expected` content defects (tree fixes, as predicted).
+      **Deferred (not the measured blocker):** `--source-book A,B` (the `a2check` attribution
+      advisory across merged skills) and `--strict`. Both need each merged skill's source
+      provenance wired in; filed as follow-up rather than gold-plated onto this pass.
 - [x] **`exegesis normalize` and `rumdl` fought over the `## Related skills` heading.** DONE (2026-08-07).
       Found while deciding the ledger's heading case (2026-08-07). `related.sectionHeading`
       is lowercase `## Related skills` and `normalize` rewrites the heading to it;
@@ -950,31 +948,25 @@ today measures none of them, so a tree can pass every gate here and still be the
 SkillLens names as the dominant failure mode: polished, comprehensive-sounding guidance
 carrying no concrete failure knowledge.
 
-- [ ] **Add `lint --check skilllens` over `skillet/skilllens`.** A third tier beside
-      `speclint` and `redlines`, not folded into either — same reasoning that split those
-      two: the spec moves when agentskills.io moves, the red lines when book2skill's
-      methodology moves, and these when the SkillLens rubric moves. Three independent
-      schedules, three packages. Blocked on the skillet promotion (see that TODO); the
-      detectors exist today but are stranded in `skillsaw/internal/rubric`.
-      Proposed severities, and they are not uniform:
-      - **error** — a `B` segment present but carrying no forbidden pattern with a stated
-        reason. Structural, and already mandatory: `redlines.checkSegments` requires `B` of
-        every book2skill body, so this checks that the segment does its job rather than
-        merely existing.
-      - **warning** — no failure-mechanism span anywhere in the body.
-      - **warning** — ≥3 softening phrases, matching skillsaw's existing threshold so the
-        gate and the score cannot disagree about the same file.
-      **Keep it opt-in, for the reason `--check redlines` already is.** skillsaw measured
-      13 of 20 hand-written skills in `~/.claude/skills` failing the RIA segment check
-      purely for not being book2skill output; a quality rubric aimed at book trees will
-      behave the same way. Default off, on for book trees.
-- [ ] **Measure before choosing the error/warning split above.** The corpus has already
-      overturned one plausible-sounding plan this year — `--write-checks` was cancelled
-      after measuring 0 derivable checks across 1275 cases. Same discipline applies: run
-      the three detectors across the 233-skill tree first and report the hit distribution.
-      If the `B`-segment check fails most book2skill output, the defect is in generation,
-      not in the tree, and the fix belongs in `book2skill` (whose TODO now carries the
-      authoring side) rather than in a gate that blocks everything.
+- [x] **Add `lint --check skilllens` over `skillet/skilllens`.** DONE. A third opt-in tier
+      beside `speclint` and `redlines`, on its own schedule: `internal/lint/skilllens.go`
+      parses the body once (`markdown.Parse`) and translates the three `skilllens` detectors
+      to diagnostics. `ParseCheck` now returns a `Checks{Redlines, SkillLens}` struct;
+      `--check skilllens` enables just this tier, `--check all` enables both. `verify`
+      honors it too. Default off, like `--check redlines` (the same 13-of-20 hand-written-
+      skill problem applies). The unblock note above is now stale: skillet v0.13.0 (pinned)
+      ships `skilllens`, so nothing was stranded.
+      **All three signals are warnings, not the proposed error** — settled by the
+      measurement below, and because the coarse "has any boundary section" test is not the
+      finer "the B segment does its job" structural check the error tier would need.
+- [x] **Measure before choosing the error/warning split above.** DONE, and it changed the
+      severity. Reused the shipped tier as its own harness (`lint --check skilllens --json`
+      over the corpus, no throwaway program). Across **277 finalized skills**: 5% lack a
+      failure-mechanism span, **0%** carry ≥3 softening phrases, 6% lack a boundary section
+      — and all 18 boundary-misses coincided with an already-broken skill. Nothing fires on
+      more than 6%, so no signal blocks book2skill output; all three ship as warnings rather
+      than the proposed structural `error`. The stricter "B segment present but empty of a
+      reasoned forbidden pattern" check is left to future work.
 
 ## Reasoning-toolkit survey (unified-thinking, 2026-08-05)
 

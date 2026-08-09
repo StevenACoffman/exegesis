@@ -35,6 +35,16 @@ type Options struct {
 	MaxDescriptionWords int      // 0 = unlimited
 	RequiredSections    []string // heading substrings that must be present and non-empty
 	Redlines            bool     // opt-in: enforce book2skill's mechanical Quality Red Lines
+	SkillLens           bool     // opt-in: the SkillLens quality tier (skillet/skilllens)
+}
+
+// Checks says which opt-in tiers a --check value enables. Each tier is on its own
+// schedule — the spec moves when agentskills.io moves, the red lines when book2skill's
+// methodology moves, and SkillLens when its rubric moves — so they are separate flags,
+// not one.
+type Checks struct {
+	Redlines  bool
+	SkillLens bool
 }
 
 // Check returns every lint diagnostic for s. An empty slice means the skill passes.
@@ -71,20 +81,28 @@ func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
 	if opts.Redlines {
 		ds = append(ds, redlines.Check(s)...)
 	}
+	if opts.SkillLens {
+		ds = append(ds, skillLens(s)...)
+	}
 	return ds
 }
 
-// ParseCheck maps a --check flag value to whether the red-line checks run. An
-// empty value is off; "redlines" and "all" turn them on; anything else errors.
-// It is shared by the lint and verify commands so they agree on the flag.
-func ParseCheck(value string) (bool, error) {
+// ParseCheck maps a --check flag value to the opt-in tiers it enables. An empty value
+// enables none; "redlines" and "skilllens" enable one each; "all" enables both;
+// anything else errors. It is shared by the lint and verify commands so they agree on
+// the flag.
+func ParseCheck(value string) (Checks, error) {
 	switch strings.TrimSpace(value) {
 	case "":
-		return false, nil
-	case "redlines", "all":
-		return true, nil
+		return Checks{}, nil
+	case "redlines":
+		return Checks{Redlines: true}, nil
+	case "skilllens":
+		return Checks{SkillLens: true}, nil
+	case "all":
+		return Checks{Redlines: true, SkillLens: true}, nil
 	default:
-		return false, fmt.Errorf("unknown --check %q (known: redlines, all)", value)
+		return Checks{}, fmt.Errorf("unknown --check %q (known: redlines, skilllens, all)", value)
 	}
 }
 

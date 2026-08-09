@@ -14,21 +14,9 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/exegesis/cmd/root"
+	"github.com/StevenACoffman/exegesis/internal/testcomp"
 	"github.com/StevenACoffman/skillet/testprompts"
 )
-
-// preferMerged is the case category unique to a merged skill: a prompt where the merged
-// skill must be chosen over either source skill it came from. It is the whole point of
-// gating a merged set differently, and skillet does not know it exists -- exegesis owns
-// this policy and passes it in.
-const preferMerged = "prefer_merged_over_source"
-
-// mergedEdgeMinimum is the edge_case floor for a merged skill.
-//
-// Two, against the standard one: a merged skill inherits the boundaries of both parents,
-// so the places it can go wrong are exactly the places one parent's rule meets the
-// other's. One edge case cannot cover that.
-const mergedEdgeMinimum = 2
 
 // Config holds the tests command configuration.
 type Config struct {
@@ -48,7 +36,7 @@ func New(parent *root.Config) *Config {
 	cfg.Flags.BoolVar(&cfg.Scaffold, 0, "scaffold",
 		"write a starter test-prompts.json (with checks derived from expected) instead of checking")
 	cfg.Flags.BoolVar(&cfg.Merge, 0, "merge",
-		"gate against the merged-skill composition, which adds "+preferMerged)
+		"gate against the merged-skill composition, which adds "+testcomp.PreferMerged)
 	cfg.Flags.BoolVar(&cfg.Migrate, 0, "migrate",
 		"rewrite each test-prompts.json into canonical form, reporting every change")
 	cfg.Command = &ff.Command{
@@ -60,7 +48,7 @@ func New(parent *root.Config) *Config {
 set fails.
 
 With --merge: gate against the merged-skill composition instead -- the same three
-categories with the edge_case floor raised to 2, plus >=2 ` + preferMerged + `,
+categories with the edge_case floor raised to 2, plus >=2 ` + testcomp.PreferMerged + `,
 prompts where the merged skill must be chosen over either source skill it came
 from. That last category is the quality gate unique to a merged skill, and the
 plain gate rejects it as an unknown case type, so a merged set must be checked
@@ -114,18 +102,10 @@ func (cfg *Config) scaffold(dirs []string) error {
 }
 
 // composition is the case mix to gate against: the merged-skill mix under --merge,
-// otherwise skillet's standard one.
-//
-// The merged mix is assembled here rather than in skillet because merging is exegesis's
-// workflow; a shared package that knew about ` + preferMerged + ` would be carrying one
-// consumer's vocabulary for everyone.
+// otherwise skillet's standard one. It defers to internal/testcomp so `tests` and
+// `verify` gate a merged tree identically.
 func (cfg *Config) composition() testprompts.Composition {
-	want := testprompts.Standard()
-	if cfg.Merge {
-		want[testprompts.TypeEdgeCase] = mergedEdgeMinimum
-		want[preferMerged] = 2
-	}
-	return want
+	return testcomp.For(cfg.Merge)
 }
 
 // displayOrder lists a composition's categories for reporting: the three standard ones
