@@ -17,6 +17,7 @@ import (
 	"github.com/StevenACoffman/exegesis/internal/overview"
 	"github.com/StevenACoffman/exegesis/internal/registry"
 	"github.com/StevenACoffman/exegesis/internal/related"
+	"github.com/StevenACoffman/exegesis/internal/testcomp"
 	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/manifest"
 	"github.com/StevenACoffman/skillet/skill"
@@ -30,6 +31,7 @@ type Config struct {
 	Registry string
 	Gates    string
 	Check    string
+	Merge    bool
 	Flags    *ff.FlagSet
 	Command  *ff.Command
 }
@@ -73,8 +75,15 @@ func New(parent *root.Config) *Config {
 	)
 	cfg.Flags.StringVar(&cfg.Gates, 0, "gates", "",
 		"comma-separated gates to run: overview, skills (default: all)")
-	cfg.Flags.StringVar(&cfg.Check, 0, "check", "",
-		"extra per-skill checks: redlines (or all) enforces the mechanical Quality Red Lines")
+	cfg.Flags.StringVar(
+		&cfg.Check,
+		0,
+		"check",
+		"",
+		"extra per-skill checks: redlines (Quality Red Lines), skilllens (SkillLens quality tier), or all",
+	)
+	cfg.Flags.BoolVar(&cfg.Merge, 0, "merge", "verify a merged tree: gate test-prompts under "+
+		"the merged composition and require MERGE_OVERVIEW.md")
 	cfg.Command = &ff.Command{
 		Name:      "verify",
 		Usage:     "exegesis verify [--gates LIST] [--check redlines] [--manifest PATH] [--registry PATH] [TREE]",
@@ -94,6 +103,12 @@ skills gate writes skills-manifest.json.
 
 With --registry, also enforce per-skill word budgets and required sections and
 check the discovered skills against the expected catalog.
+
+With --merge, verify a merged tree: gate each skill's test-prompts under the
+merged composition (which adds the prefer_merged_over_source category and raises
+the edge_case floor) instead of the standard one, and require MERGE_OVERVIEW.md
+at the tree root. Without it, a merged skill's prefer_merged_over_source cases
+are rejected as an unknown type.
 
 On completion a skills run writes skills-manifest.json (structure_verified
 reflects whether every gate passed, and each entry carries the skill's sha256)
@@ -134,9 +149,9 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 func (cfg *Config) run(tree string, gates gateSet) (bool, error) {
 	overviewPass := true
 	if gates.runOverview() {
-		problems, ran := checkOverview(tree, gates.strictOverview())
+		name, problems, ran := cfg.overviewGate(tree, gates.strictOverview())
 		if ran {
-			cfg.renderOverview(problems)
+			cfg.renderOverview(name, problems)
 		}
 		overviewPass = len(problems) == 0
 	}
@@ -153,14 +168,15 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	redlines, err := lintlib.ParseCheck(cfg.Check)
+	checks, err := lintlib.ParseCheck(cfg.Check)
 	if err != nil {
 		// An invalid --check value is a usage error; internal/lint returns a plain
 		// error because a subpackage must not import the command layer to say so.
 		return false, root.Usagef("verify: %w", err)
 	}
-	opts.Redlines = redlines
-	reports, err := verifySkills(tree, opts)
+	opts.Redlines = checks.Redlines
+	opts.SkillLens = checks.SkillLens
+	reports, err := verifySkills(tree, opts, testcomp.For(cfg.Merge))
 	if err != nil {
 		return false, err
 	}
@@ -284,19 +300,49 @@ func checkOverview(tree string, strict bool) (problems []string, ran bool) {
 	return overview.Check(string(b)), true
 }
 
-func verifySkills(tree string, opts lintlib.Options) ([]skillReport, error) {
+// overviewGate runs the Stage-0 overview gate appropriate to the tree: the book
+// overview by default, or MERGE_OVERVIEW.md under --merge, which a merged tree must
+// carry. It returns the file name so the report names what it gated.
+func (cfg *Config) overviewGate(
+	tree string,
+	strict bool,
+) (name string, problems []string, ran bool) {
+	if cfg.Merge {
+		// The merge overview always runs: a merged tree must carry it, so there is no
+		// lenient skip as there is for a bare book tree.
+		return "MERGE_OVERVIEW.md", checkMergeOverview(tree), true
+	}
+	p, r := checkOverview(tree, strict)
+	return "BOOK_OVERVIEW.md", p, r
+}
+
+// checkMergeOverview requires MERGE_OVERVIEW.md at the tree root. Presence is the gate:
+// its structure is the merge pipeline's concern, not a book-overview schema, so this
+// does not run overview.Check on it.
+func checkMergeOverview(tree string) []string {
+	if _, err := os.Stat(filepath.Join(tree, "MERGE_OVERVIEW.md")); err != nil {
+		return []string{"not found (required for --merge)"}
+	}
+	return nil
+}
+
+func verifySkills(
+	tree string,
+	opts lintlib.Options,
+	comp testprompts.Composition,
+) ([]skillReport, error) {
 	dirs, err := skill.Discover(tree)
 	if err != nil {
 		return nil, fmt.Errorf("discover skills: %w", err)
 	}
 	reports := make([]skillReport, 0, len(dirs))
 	for _, dir := range dirs {
-		reports = append(reports, verifyOne(dir, opts))
+		reports = append(reports, verifyOne(dir, opts, comp))
 	}
 	return reports, nil
 }
 
-func verifyOne(dir string, opts lintlib.Options) skillReport {
+func verifyOne(dir string, opts lintlib.Options, comp testprompts.Composition) skillReport {
 	r := skillReport{dir: dir, slug: filepath.Base(dir)}
 	if s, err := skill.Load(dir); err == nil {
 		r.hash = s.Hash()
@@ -311,7 +357,7 @@ func verifyOne(dir string, opts lintlib.Options) skillReport {
 		r.problems = []string{"missing or unreadable test-prompts.json"}
 	default:
 		r.hasTests = true
-		r.problems = f.Validate()
+		r.problems = f.ValidateAgainst(comp)
 	}
 	return r
 }
@@ -342,13 +388,13 @@ func (cfg *Config) writeManifest(tree string, reports []skillReport, verified bo
 
 // renderOverview reports the overview gate outcome: one line per problem, or a
 // single "ok" line when the gate ran and passed.
-func (cfg *Config) renderOverview(problems []string) {
+func (cfg *Config) renderOverview(name string, problems []string) {
 	if len(problems) == 0 {
-		_, _ = fmt.Fprintln(cfg.Stdout, "BOOK_OVERVIEW.md: ok")
+		_, _ = fmt.Fprintf(cfg.Stdout, "%s: ok\n", name)
 		return
 	}
 	for _, p := range problems {
-		_, _ = fmt.Fprintf(cfg.Stdout, "BOOK_OVERVIEW.md: %s\n", p)
+		_, _ = fmt.Fprintf(cfg.Stdout, "%s: %s\n", name, p)
 	}
 }
 
