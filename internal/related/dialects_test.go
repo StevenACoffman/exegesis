@@ -339,11 +339,10 @@ func TestPrerequisiteForIsNotAbsorbed(t *testing.T) {
 // a separator it stops at, "use them together" becomes two extra edges.
 func TestReversedFormsDoNotInventTargets(t *testing.T) {
 	t.Parallel()
-	// Only the dash form is covered: the paren form has the same defect and is
-	// deliberately left unfixed here (see splitReversed), because the one-word fix
-	// changes what Normalize rewrites.
 	for name, bullet := range map[string]string{
-		"dash": "- **alpha** — combines: use them together.",
+		"paren":            "- **alpha** (composes-with) use them together.",
+		"paren with colon": "- **alpha** (composes-with): use them together.",
+		"dash":             "- **alpha** — combines: use them together.",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -355,5 +354,20 @@ func TestReversedFormsDoNotInventTargets(t *testing.T) {
 				t.Errorf("Target = %q, want alpha", got[0].Target)
 			}
 		})
+	}
+}
+
+// TestReversedParenFormKeepsItsRationale pins the second half of that fix. Adding the em
+// dash alone left the rationale as "— : because", because this dialect writes "(kind): why"
+// and the colon was reaching trimRationale as a leading character it happened to strip.
+func TestReversedParenFormKeepsItsRationale(t *testing.T) {
+	t.Parallel()
+	got := related.ParseSection(
+		"## Related Skills\n\n- **alpha** (contrasts-with): because it differs.\n")
+	if len(got) != 1 {
+		t.Fatalf("got %d edges, want 1: %+v", len(got), got)
+	}
+	if got[0].Rationale != "because it differs." {
+		t.Errorf("Rationale = %q, want %q", got[0].Rationale, "because it differs.")
 	}
 }
