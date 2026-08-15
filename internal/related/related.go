@@ -35,6 +35,17 @@ const (
 	ContrastsWith Kind = "contrasts-with"
 	// ComposesWith means the two skills are used together.
 	ComposesWith Kind = "composes-with"
+	// Informs means the source shapes how the target is applied without being needed
+	// first: "the types this classification produces become the method signatures in
+	// domain service interfaces." Directional, but **not** an ordering.
+	//
+	// It is deliberately excluded from the learning path, which follows DependsOn alone.
+	// A survey of the 233-skill corpus found 38 of these edges and **12 of them mutual**
+	// (A informs B and B informs A), which is coherent for influence and impossible for
+	// prerequisite: reading them as DependsOn would put 12 two-cycles into a topological
+	// sort. That is the whole reason this is its own kind rather than a spelling of one of
+	// the others -- ComposesWith would claim a symmetry 26 of the 38 do not have.
+	Informs Kind = "informs"
 	// SupersededBy means a merge run replaced the source skill with the target,
 	// which usually lives in another tree — see Qualified.
 	//
@@ -46,8 +57,8 @@ const (
 	SupersededBy Kind = "superseded-by"
 )
 
-// Kind is the relationship a related-skill edge expresses. Only the three known
-// kinds are valid: `link` rejects an unknown kind, `index` skips one on read.
+// Kind is the relationship a related-skill edge expresses. Only the known kinds
+// listed by Kinds are valid: `link` rejects an unknown kind, `index` skips one on read.
 type Kind string
 
 // Edge is one related-skill relationship: its kind, the target skill slug, and a
@@ -91,7 +102,7 @@ type section struct {
 // It is the vocabulary itself, so Valid and every usage message read from one
 // definition and cannot list different kinds.
 func Kinds() []Kind {
-	return []Kind{DependsOn, ContrastsWith, ComposesWith, SupersededBy}
+	return []Kind{DependsOn, ContrastsWith, ComposesWith, Informs, SupersededBy}
 }
 
 // Valid reports whether k is one of the known kinds.

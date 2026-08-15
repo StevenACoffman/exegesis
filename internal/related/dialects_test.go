@@ -270,3 +270,90 @@ func TestParseSectionStillRejectsProseWithSlashes(t *testing.T) {
 		})
 	}
 }
+
+// TestSixthDialect covers "- **slug** — kind: why", the orientation the books write most
+// and the reader understood least: measured against the 233-skill corpus, not one of its
+// 110 bullets parsed before this.
+func TestSixthDialect(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		bullet string
+		want   related.Kind
+	}{
+		"informs maps to itself": {
+			"- **alpha** — informs: shapes how it is applied.",
+			related.Informs,
+		},
+		"combines is composes-with": {
+			"- **alpha** — combines: use them together.",
+			related.ComposesWith,
+		},
+		"compares is contrasts-with": {
+			"- **alpha** — compares: alternatives.",
+			related.ContrastsWith,
+		},
+		"depends on is depends-on": {
+			"- **alpha** — depends on: needs it first.",
+			related.DependsOn,
+		},
+		"canonical spelling still ok": {
+			"- **alpha** — composes-with: together.",
+			related.ComposesWith,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got := related.ParseSection("## Related Skills\n\n" + tc.bullet + "\n")
+			if len(got) != 1 {
+				t.Fatalf("got %d edges, want 1: %+v", len(got), got)
+			}
+			if got[0].Kind != tc.want {
+				t.Errorf("Kind = %q, want %q", got[0].Kind, tc.want)
+			}
+			if got[0].Target != "alpha" {
+				t.Errorf("Target = %q, want alpha", got[0].Target)
+			}
+			if got[0].Rationale == "" {
+				t.Error("rationale was dropped")
+			}
+		})
+	}
+}
+
+// TestPrerequisiteForIsNotAbsorbed pins the one dialect kind that must stay unread. It is
+// the inverse of depends-on -- 13 of its 18 corpus edges have their exact flip already
+// present as a depends-on bullet in the target's file -- so absorbing it here would either
+// reverse real edges or attribute an edge to a skill whose text never declared it.
+func TestPrerequisiteForIsNotAbsorbed(t *testing.T) {
+	t.Parallel()
+	got := related.ParseSection(
+		"## Related Skills\n\n- **alpha** — prerequisite for: run this one first.\n")
+	if len(got) != 0 {
+		t.Errorf("'prerequisite for' was absorbed as %+v; it needs a rewrite, not a read", got)
+	}
+}
+
+// TestReversedFormsDoNotInventTargets pins both reversed orientations against a rationale
+// of bare words. takeTargets keeps taking targets while the head parses as one, so without
+// a separator it stops at, "use them together" becomes two extra edges.
+func TestReversedFormsDoNotInventTargets(t *testing.T) {
+	t.Parallel()
+	// Only the dash form is covered: the paren form has the same defect and is
+	// deliberately left unfixed here (see splitReversed), because the one-word fix
+	// changes what Normalize rewrites.
+	for name, bullet := range map[string]string{
+		"dash": "- **alpha** — combines: use them together.",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got := related.ParseSection("## Related Skills\n\n" + bullet + "\n")
+			if len(got) != 1 {
+				t.Fatalf("got %d edges, want 1: %+v", len(got), got)
+			}
+			if got[0].Target != "alpha" {
+				t.Errorf("Target = %q, want alpha", got[0].Target)
+			}
+		})
+	}
+}
