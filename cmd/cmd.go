@@ -21,6 +21,7 @@ import (
 	"github.com/StevenACoffman/exegesis/cmd/index"
 	"github.com/StevenACoffman/exegesis/cmd/link"
 	"github.com/StevenACoffman/exegesis/cmd/lint"
+	"github.com/StevenACoffman/exegesis/cmd/mergeindex"
 	"github.com/StevenACoffman/exegesis/cmd/mergemigrate"
 	"github.com/StevenACoffman/exegesis/cmd/mergestatus"
 	"github.com/StevenACoffman/exegesis/cmd/normalize"
@@ -55,6 +56,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	normalize.New(r)
 	quotecheck.New(r)
 	mergestatus.New(r)
+	mergeindex.New(r)
 	mergemigrate.New(r)
 	a2check.New(r)
 	// register new commands here

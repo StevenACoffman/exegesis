@@ -233,53 +233,28 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       Running `exegesis merge-migrate books/merged/all-books-v1` rewrites 27 files that are
       already carrying uncommitted changes, so it is left as your call, and `merge-index` is
       what needs it done.
-- [ ] **`exegesis merge-index MERGED_TREE`** — INDEX for a merged tree. Reads the YAML headers
-      of `source-verification/<pair-id>-{r,a1}.md` to build a "Source Verification Summary"
-      table (its V1–V4 column comes from the ledgers), so each verdict is written once instead
-      of hand-maintained. Distinct from `index`, which knows nothing about merge provenance.
-      **Header reading is unblocked upstream** — `frontmatter` ships in the pinned
-      skillet v0.11.0. Use `frontmatter.Split(text) (block, body)` and unmarshal `block`
-      yourself — do **not** write a second frontmatter parser. It was promoted out of `skill.splitFrontmatter` for
-      exactly this call site, and it handles the cases a fresh implementation gets wrong: an
-      empty header, an unterminated one, and CRLF (normalized inside `Split`, so this caller
-      must not normalize first). `skill.Load` is no use here — it takes a *directory* and
-      appends `SKILL.md`.
-      The header shape (the key is `pair`, not `pair-id` -- an earlier note here had it
-      wrong; `<pair-id>` is the *value* it holds):
-
-      ```go
-      type header struct {
-          Pair    string `yaml:"pair"`
-          Check   string `yaml:"check"`   // r-quote-accuracy | a1-attribution
-          Sources []struct {
-              Book      string `yaml:"book"`
-              Skill     string `yaml:"skill"`
-              Status    string `yaml:"status"`    // accurate|drifted-minor|drifted-major|not-found
-              Corrected bool   `yaml:"corrected"` // A1: verified|mismatch|not-found
-          } `yaml:"sources"`
-      }
-      ```
-
-      **Unblocked by the decision above (2026-08-08); now blocked only on the migration**,
-      which produces the Provenance blocks this reads. Ordering: migrate, then build this
-      against the migrated tree as the fixture. Sources of truth, one per section:
-      - **Provenance table / cross-book graph** ← each merged skill's `## Provenance` fenced
-        `yaml` (`source_skills`). Supersession is *derived* from that list, not read from
-        edges — measured redundant, see above — so this section needs no new edge kind.
-      - **Source Verification Summary** ← `source-verification/<pair-id>-{r,a1}.md` headers,
-        via `frontmatter.Split`; its V1–V4 column ← the ledgers. Both still have zero
-        instances on disk, so this section renders empty until a merge run writes them. That
-        is honest output, not a blocker.
-      - **Cluster Summary** ← optional `clusters.yaml` at the merge root; absent, the column
-        is omitted rather than guessed.
-      - **Rejected Pairs** ← `rejected/pair-NNN.md`, which are free-form prose with bold
-        labels. Either give them the same fenced-yaml treatment or render them as links only.
-      Read the body sections with `skillet/markdown.Parse` (already in v0.11.0, goldmark) —
-      do not hand-roll a section scanner. `skill.Load` is no use for the verification headers:
-      it takes a *directory* and appends `SKILL.md`.
-      Note the ledger is a markdown *section*, not frontmatter — `merge_status` is not a
-      spec-allowed frontmatter key and would fail lint — so `frontmatter.Split` does not help
-      there; `internal/mergestatus.Parse` does.
+- [x] **`exegesis merge-index MERGED_TREE`** — DONE. First the blocker: the migration is no
+      longer pending — `exegesis merge-migrate` was run over `books/merged/all-books-v1`
+      (27/27 skills), so every merged skill now carries the `## Provenance` block this reads.
+      `internal/mergeindexgen.Generate(tree)` + `cmd/merge-index` (mirroring `indexgen`/`index`,
+      `--check` staleness, `atomicfile`) regenerate `MERGED_TREE/INDEX.md`, replacing the
+      hand-maintained cross-book provenance index. Deterministic (no date stamp) so `--check`
+      works. Sections, one source of truth each:
+      - **Cross-Book Provenance Table** ← each skill's `## Provenance` fenced `yaml`
+      (`source_skills`), parsed with `mergemigrate.Provenance` (the exact shape
+      `mergemigrate.Render` writes — no second parser). A source feeding ≥ 2 merged skills is
+      marked `★`; the count is in the header. Verified against the hand-made INDEX: same rows,
+      same fan-in marks (4).
+      - **Source Verification Summary** ← `source-verification/*.md` headers via
+      `frontmatter.Split`. Zero on disk → renders "No source-verification records on disk
+      yet" (honest, as predicted). The **V1–V4-from-ledgers** column (`internal/mergestatus`)
+      is deferred until those files exist — nothing to join today.
+      - **Rejected Pairs** ← `rejected/pair-*.md`, rendered as links with each file's first
+      `#` heading as the label (5 present).
+      - **Cluster Summary / column** ← follow-up: `clusters.yaml` does not exist, so the column
+      is omitted rather than guessed (per the original decision). The hand-made INDEX's
+      hand-assigned clusters are therefore not in the generated file; add a `clusters.yaml`
+      and extend `mergeindexgen` if the cluster column is wanted back.
 - [x] **`exegesis a2check --source-skill A,B MERGED_SKILL_DIR`** — DONE (2026-08-08). The
       A2-sharpness gate: the merged `A2` must carry ≥2 language signals neither source has.
       Advisory by default, `--strict` to fail. Counting is structural; whether the signals are
@@ -672,6 +647,28 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       and its five helpers were deleted in favour of it. **v0.9.0** adds
       `Skill.FrontmatterErr`, which is what let `lint` stop reporting a name/folder mismatch
       on a skill whose name could not be read.
+- [ ] **`--check redlines` on a mixed tree is a manual gate; consider a derived one.**
+      `redlines.checkSegments` requires all six RIA-TV++ labels of every skill it sees, and
+      it is deliberately unguarded — the package comment says so, noting only `checkTrigger`
+      is conditioned (on `FrontmatterErr == nil`). Today that is contained by the check being
+      opt-in, which works but puts correctness on the caller: skillsaw's preflight help spells
+      out "use `--redlines` when optimizing a book tree, where that structure is the contract."
+      Measured 2026-08-09 over the 233-skill corpus: **48 skills have zero RIA segments** —
+      they are not RIA-TV++ documents at all, but hand-written tool skills (`rumdl`, `vale`,
+      `gh-cli`, `sqlc`, `lefthook`, the `webapp-*` family), decision skills
+      (`grpc-vs-rest-vs-graphql`, `queue-flow-control-decision`) and the meta-skills
+      `book2skill` and `skillsaw-skill`. Run against a mixed tree that is **288 diagnostics**
+      (6 × 48) about a format those documents never claimed.
+      A derived predicate — "does this document present as a book skill at all?", e.g. *some*
+      RIA labels present but not all — would make the check self-correcting and let
+      `--check all` be safe on a mixed tree, instead of depending on every caller knowing
+      which kind of tree they are in. Note the shape differs from the skillsaw/adh predicate
+      (see `../../git/skillet/TODO.md`): partial-conformance, not executes-anything. **Do not
+      merge the two into one general mechanism** on the strength of the resemblance.
+      Keep the current all-or-nothing behaviour available: a book tree genuinely should be
+      held to all six, and a derived gate must not become a way for a malformed book skill to
+      escape the contract by dropping enough headings to look like something else. That
+      failure mode is the reason to weigh this rather than just do it.
 
 ## Convenience gaps (from the gemini_skills gap analysis, 2026-08-05)
 
