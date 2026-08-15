@@ -647,6 +647,28 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       and its five helpers were deleted in favour of it. **v0.9.0** adds
       `Skill.FrontmatterErr`, which is what let `lint` stop reporting a name/folder mismatch
       on a skill whose name could not be read.
+- [ ] **`--check redlines` on a mixed tree is a manual gate; consider a derived one.**
+      `redlines.checkSegments` requires all six RIA-TV++ labels of every skill it sees, and
+      it is deliberately unguarded — the package comment says so, noting only `checkTrigger`
+      is conditioned (on `FrontmatterErr == nil`). Today that is contained by the check being
+      opt-in, which works but puts correctness on the caller: skillsaw's preflight help spells
+      out "use `--redlines` when optimizing a book tree, where that structure is the contract."
+      Measured 2026-08-09 over the 233-skill corpus: **48 skills have zero RIA segments** —
+      they are not RIA-TV++ documents at all, but hand-written tool skills (`rumdl`, `vale`,
+      `gh-cli`, `sqlc`, `lefthook`, the `webapp-*` family), decision skills
+      (`grpc-vs-rest-vs-graphql`, `queue-flow-control-decision`) and the meta-skills
+      `book2skill` and `skillsaw-skill`. Run against a mixed tree that is **288 diagnostics**
+      (6 × 48) about a format those documents never claimed.
+      A derived predicate — "does this document present as a book skill at all?", e.g. *some*
+      RIA labels present but not all — would make the check self-correcting and let
+      `--check all` be safe on a mixed tree, instead of depending on every caller knowing
+      which kind of tree they are in. Note the shape differs from the skillsaw/adh predicate
+      (see `../../git/skillet/TODO.md`): partial-conformance, not executes-anything. **Do not
+      merge the two into one general mechanism** on the strength of the resemblance.
+      Keep the current all-or-nothing behaviour available: a book tree genuinely should be
+      held to all six, and a derived gate must not become a way for a malformed book skill to
+      escape the contract by dropping enough headings to look like something else. That
+      failure mode is the reason to weigh this rather than just do it.
 
 ## Convenience gaps (from the gemini_skills gap analysis, 2026-08-05)
 
