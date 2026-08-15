@@ -1090,3 +1090,76 @@ deterministic rigor lives. No meaningful code to lift.
   must be set deliberately; a zero tolerance calls any drop a regression. Its reasoning
   algorithms (Bayesian/causal/fallacy/MCDA) and keyword detectors still do not fit
   exegesis's structure tier.
+
+## Agent-Red Survey (2026-08-15)
+
+Source: a survey of `~/Documents/agent-red` (26 agent-tooling projects) driven by the
+knowledge-base ingestion work. Every claim below was checked against both codebases, not
+against a README.
+
+- [x] **`textnorm` moved to skillet.** DONE 2026-08-15 on v0.16.0. `a2check` and `quotecheck`
+  import `skillet/textnorm`; the local copy is deleted. Verified byte-identical over all 233
+  corpus skills before switching — 0 mismatches — since altering normalization would move
+  every `quotecheck` verdict in the tree.
+  It had **no tests here**, which a shared-kernel package cannot ship without; written
+  upstream, pinning each typographic class, case preservation, and the canonizer
+  disagreement itself.
+  **`quotecheck` is deliberately NOT promoted** — its 2nd consumer is the knowledge-base
+  ingestion tool, which does not exist. One prospective consumer is not evidence.
+  canonizer adopting `textnorm` is that repo's commit; the promotion is what unblocks it.
+  Original entry: `textnorm.Fold` folds whitespace runs *and* typographic
+  characters before comparing a quotation to its source. **canonizer answers the same
+  question differently:** `internal/verify.normalize` is
+  `strings.Join(strings.Fields(s), " ")` — whitespace only. So a rule whose `↦` anchor was
+  copied from a source containing a curly apostrophe fails canonizer's `verify.Provenance`
+  while the same passage passes `quotecheck` here. Two tools in one family disagreeing
+  about "does this quotation appear in the source" is the exact drift skillet exists to
+  prevent, and it is not hypothetical — it is in `canonizer/internal/verify/verify.go:144`
+  today. `quotecheck` gains its 2nd consumer in the knowledge-base ingestion tool
+  (fabrication guard over ingested sources); `textnorm` already has two callers here
+  (`quotecheck`, `a2check`) and canonizer is the third. Recorded in skillet's TODO under
+  *Contradiction Detection*.
+- [ ] **Hidden-character scanning belongs in `lint`.** `lint` gates frontmatter, body
+  links, and runtime neutrality — nothing adversarial. A skill tree that accepts anything
+  from outside is accepting text an agent will obey. `qvr/internal/security/unicode.go` is
+  the liftable piece: pure rune predicates over zero-width characters (`0x200B`, `0x200C`,
+  `0x200D`, `0x2060`, `0xFEFF`), bidi overrides (`0x202A-0x202E`, `0x2066-0x2069`, the
+  Trojan Source class), and Unicode tag characters (`0xE0001-0xE007F`). **Its constants are
+  codepoint ranges from the Unicode standard, not tuned thresholds** — which is precisely
+  what separates it from the keyword heuristics the family rejects, and what makes it
+  eligible for a blocking gate. It also reasons about false positives explicitly:
+  mixed-script confusables are a *warning*, not critical, because multilingual prose
+  legitimately mixes scripts. Shape here: a detector beside `neutrality`, evidence out,
+  severity chosen by the caller.
+  src: `agent-red/qvr` `internal/security/{unicode,rules}.go` — its wider 15-category
+  taxonomy (`prompt_injection`, `data_exfiltration`, `memory_poisoning`,
+  `mcp_tool_poisoning`, …) is the roadmap, not the first slice.
+- [ ] **A "what did this change orphan?" gate over the related-skill edge graph — and the
+  applicability question it answers.** `link`/`index` own the edge graph but nothing reports
+  a skill that lost its last inbound edge. `coherence`'s `OrphanEndpoints` meter
+  (`internal/drift/drift.go:198`) is the shape: `NewlyOrphanedEndpoints` **and**
+  `NewlyCoveredEndpoints` (both directions, so the gate is regression-relative rather than
+  absolute), plus `BaseAvailable` distinguishing "no baseline" from "zero" — the same
+  distinction `skillet/timeseries` deliberately preserves as `Verdict.Compared`.
+  **The part worth more than the meter:** it carries `Convention bool`, true only when the
+  current graph contains any `verifies` edge — proof the repo actually uses the pattern
+  being checked — and skips score-based promotion when false. That is a **fifth** way to
+  answer "does this check apply to this document", and unlike the four the family already
+  uses (a derived gate in `redlines.checkTrigger`, a manual `--check` opt-in, a
+  defer-to-judge flag, an advisory severity) it is **derived from the corpus rather than
+  declared, judged, or opted into**. Worth recording against skillet's open note that a
+  general `Applicability` mechanism should wait until a shape repeats — this may be the
+  repeat.
+- [ ] **`skills-manifest.json` records identity but not origin or verdict.**
+  `skillet/manifest.Skill` is `{slug, dir, sha256, test_prompts}`. A `qvr.lock` entry
+  carries the resolved commit, a subtree hash of the exact bytes installed, the scan
+  decision, and the commit author — so the lock *is* the audit trail rather than a summary
+  of one. **Scoped honestly: this gap only bites for skills that come from outside**, since
+  a tree we author has its origin in git already. That is exactly the ingestion case, so
+  record it now and build it when the first third-party skill lands, not before.
+  src: `agent-red/qvr` (`qvr.toml` declares intent, `qvr.lock` records resolved proof).
+- Deliberately NOT adopted: `qvr`'s OSV dependency checks and SARIF export (exegesis gates
+  documents, not dependency trees, and has no code-scanning pipeline to feed);
+  `skillex`'s SQLite index for `INDEX.md` (its "same state → same index" property is right,
+  but the corpus is 233 skills — an index bought before a measurement is a second source of
+  truth about which edges exist).
