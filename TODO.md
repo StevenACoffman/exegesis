@@ -889,7 +889,18 @@ proposes is in the wrong place.
       mapping it flipped attributes an edge to a skill whose text never declared it.
       Moving these 18 (5 of them new) is a **rewrite**, not a read — a `normalize` job.
       Pinned by `TestPrerequisiteForIsNotAbsorbed`.
-- [ ] **`splitReversed` invents targets from a bare-word rationale.** Found by probing
+- [x] **`splitReversed` invents targets from a bare-word rationale.** DONE 2026-08-15.
+      **The entry's "one word" framing was wrong** — adding the em dash alone left the
+      rationale as `— : why`, because this dialect writes `(kind): why` and the colon was
+      reaching `trimRationale` as a leading character it happened to strip. The fix is two
+      changes: consume the separator here (as `splitReversedDash` already does), then join
+      with the dash. A parser leaving its own separator in the payload for a later pass to
+      clean up is one decision split across two functions.
+      **`TestNormalize` passes unmodified**, which was the criterion for the fix being right
+      rather than the tests being bent. Corpus edge counts are **identical, 257 before and
+      after**: no skill uses this orientation with a bare-word rationale, so the fix is
+      correctness insurance with zero blast radius here.
+      Original entry: Found by probing
       the paren form after fixing the same defect in the new dash form:
       `- **alpha** (composes-with) use them together` yields **three** edges, inventing
       `use` and `them`, because `takeTargets` keeps taking while the head parses as a
@@ -897,7 +908,34 @@ proposes is in the wrong place.
       rather than `" "`, exactly as `splitReversedDash` does — but it changes what
       `Normalize` rewrites and fails `TestNormalize`, so it needs its own before/after
       over the corpus rather than riding along with the dialect work.
-- [ ] **Move the 18 `prerequisite for` bullets by rewrite.** Flip each to a `depends-on`
+- [ ] **`ml-data-pipeline-type-integrity` names a skill that does not exist.** Its
+      `prerequisite for` bullet targets `ml-pipeline-integrity-pre-training`, which has no
+      directory in the tree. Left in place by the migration rather than guessed at: the
+      edge cannot be written to a file that is not there, and deleting the bullet would
+      erase the only record that the skill was expected to exist. Decide whether the
+      target should be written or the bullet dropped.
+- [ ] **17 sixth-dialect bullets sit outside `## Related Skills` and are never read.**
+      Found while migrating: they live under chapter and option headings
+      (`## Ch. 6 — Secured gRPC`, `## Option C: Service Mesh (Istio)`), where
+      `ParseSection` correctly does not look. 77 of the 94 are inside the section and are
+      now parsed. Whether the other 17 are intended as edges or as narrative prose is a
+      judgement per bullet — do **not** widen the reader's scope to catch them, which
+      would make every bulleted mention of a skill an edge.
+- [x] **Move the 18 `prerequisite for` bullets by rewrite.** DONE 2026-08-15, but **not
+      mechanically — a blanket flip would have injected 3 wrong edges.**
+      Of the 18: **12 were corroborated** by the target already declaring the same
+      relationship as `depends-on`, and were dropped as duplicates. **5 were
+      uncorroborated**, and reading each rationale showed **3 of those 5 were mislabelled**
+      — they say the *source* depends on the target ("consult payload-optimization for the
+      full ordering", "payload-optimization frames when to apply flattening", layout
+      "creates the blocks" this skill then handles). Those were relabelled `depends on` in
+      place. Only **2 were correct flips** (`grpc-vs-rest-vs-graphql` → the two skills it
+      is the framework for) and were written into the target's file.
+      **The lesson generalises:** corroboration is what made the 12 safe. The uncorroborated
+      ones are exactly where a mislabel hides, so a migration keyed on the label alone
+      deletes the evidence rather than the duplicate.
+      Corpus `depends-on` edges 68 → 73; 1 bullet left in place, see below.
+      Original entry: Flip each to a `depends-on`
       bullet in the *target's* file, deduping against the 13 whose flip already exists.
       Only 5 are new. Two self-contradictory pairs were already corrected by hand.
       Superseded framing of the original entry:
