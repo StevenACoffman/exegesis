@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	"github.com/StevenACoffman/exegesis/internal/quotecheck"
-	"github.com/StevenACoffman/exegesis/internal/textnorm"
+	"github.com/StevenACoffman/skillet/textnorm"
 )
 
 // Segment is the RIA-TV++ segment holding the trigger scenarios and their signals.

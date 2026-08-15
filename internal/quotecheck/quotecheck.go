@@ -15,8 +15,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/StevenACoffman/exegesis/internal/textnorm"
 	"github.com/StevenACoffman/skillet/redlines"
+	"github.com/StevenACoffman/skillet/textnorm"
 )
 
 // MinPassageWords is the shortest passage worth a verdict.
