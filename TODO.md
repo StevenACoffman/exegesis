@@ -876,19 +876,74 @@ proposes is in the wrong place.
       Verified on a real skill (`site-reliability-engineering/blameless-postmortem-process`)
       against its own R text as the source: 10/10 located, exit 0 at `--min-support 3`; against
       an unrelated source, 0/10 and `SUPPORT 0 located, --min-support 3`, exit 1.
-- [ ] **Decide the kind vocabulary for the sixth bullet dialect (250 bullets).** Found while
-      normalizing. A sixth dialect exists that the reader does not map:
-      `` - **[slug](../slug/SKILL.md)** — informs: why ``. Its kinds are a *different taxonomy*
-      from the three canonical ones — `informs` (93), `prerequisite for` (44), `combines` (40),
-      `depends on` (39), `relates` (22), `compares` (12). Only `depends on` is an unambiguous
-      spelling of `depends-on`. The rest need a semantic decision that is yours, not the
-      parser's: `combines`→`composes-with` and `compares`→`contrasts-with` are plausible, but
-      **`prerequisite for` looks like the inverse of `depends-on`** (A is prerequisite for B
-      means B depends-on A), so mapping it without flipping the direction would silently
-      reverse 44 edges, and `informs`/`relates` have no canonical equivalent at all. Decide the
-      mapping (including whether to add kinds) and the reader can absorb the dialect in an
-      afternoon; until then these 250 bullets stay invisible to `index` and untouched by
-      `normalize`.
+- [x] **Absorb the sixth bullet dialect.** DONE 2026-08-15. `informs` added as a
+      **non-ordering** kind (decision: Option A), and the reader now maps the dialect:
+      `combines`→`composes-with`, `compares`→`contrasts-with`, `depends on`→`depends-on`,
+      `informs`→itself. Corpus edges went **175 → 257 (+82)**.
+      `informs` is excluded from the learning path for free — `graph.go` follows
+      `DependsOn` alone — which is what makes it safe: 12 of its 38 edges are mutual and
+      would have been 12 two-cycles in the topological sort.
+      **`prerequisite for` was deliberately NOT absorbed, and cannot be.** A reader
+      cannot emit it: the flipped edge belongs in the *target's* file, and `ParseSection`
+      only speaks for the file it is reading. Mapping it unflipped reverses real edges;
+      mapping it flipped attributes an edge to a skill whose text never declared it.
+      Moving these 18 (5 of them new) is a **rewrite**, not a read — a `normalize` job.
+      Pinned by `TestPrerequisiteForIsNotAbsorbed`.
+- [ ] **`splitReversed` invents targets from a bare-word rationale.** Found by probing
+      the paren form after fixing the same defect in the new dash form:
+      `- **alpha** (composes-with) use them together` yields **three** edges, inventing
+      `use` and `them`, because `takeTargets` keeps taking while the head parses as a
+      target and there is no separator it stops at. The fix is one word — emit `" — "`
+      rather than `" "`, exactly as `splitReversedDash` does — but it changes what
+      `Normalize` rewrites and fails `TestNormalize`, so it needs its own before/after
+      over the corpus rather than riding along with the dialect work.
+- [ ] **Move the 18 `prerequisite for` bullets by rewrite.** Flip each to a `depends-on`
+      bullet in the *target's* file, deduping against the 13 whose flip already exists.
+      Only 5 are new. Two self-contradictory pairs were already corrected by hand.
+      Superseded framing of the original entry:
+      Surveyed every instance in the 233-skill tree; the findings below replace the estimates
+      this entry opened with.
+      **Two corrections to the original entry.** The shape has **no link**: it is
+      `` - **slug** — kind: why ``, not `` - **[slug](../slug/SKILL.md)** — kind: why ``, so a
+      parser written against the old text would match nothing. And the counts were roughly
+      2.3× high (110 bullets in this tree, not 250) — the rest presumably live in another
+      tree, which is worth confirming before sizing the work.
+      **`prerequisite for` is the inverse of `depends-on`, and the corpus proves it rather
+      than the reading being inferred: 13 of its 18 edges have their exact flip already
+      present as a `depends on`**, both ends of one relationship declared from each side
+      (`internal-package-bounded-context-enforcement --depends on--> ddd-fitness-scorecard`
+      alongside `ddd-fitness-scorecard --prerequisite for--> internal-package-...`). **Zero**
+      match a `depends on` as written; under a same-direction reading you would expect the
+      opposite. So flip it — and **dedup**, because only **5 of the 18 are new**; a blanket
+      mapping mostly writes duplicates of edges `index` already has.
+      **Two self-contradictory pairs were fixed by hand** (2026-08-15), each declared
+      `prerequisite for` in *both* directions so one side had to be wrong. In both the
+      rationale was already right and only the label was off, so only the label changed:
+      `entity-vs-value-object-decision` → `ddd-fitness-scorecard` ("run the scorecard first")
+      and `terraform-for-each-over-count` → `terraform-moved-block-refactoring` ("migrating
+      … requires moved blocks") are both **depends on**, not `prerequisite for`. Their
+      counterparts in `ddd-fitness-scorecard` and `terraform-moved-block-refactoring` were
+      correct and are unchanged. Zero contradictory pairs remain.
+      **Safe to absorb now** — unambiguous, and symmetric so direction cannot be got wrong:
+      `combines` (14) → `composes-with`, every rationale saying "use together" / "pair with" /
+      "run both together"; `compares` (8) → `contrasts-with`, every rationale saying "both
+      address X by different means".
+      **`informs` (38) must NOT map to `depends-on`, and that is the decision still open.**
+      **12 of its 38 edges are mutual** (`A informs B` *and* `B informs A`), so mapping them
+      to `depends-on` injects 12 two-cycles into the graph `index` topologically sorts. It
+      duplicates nothing (zero overlap with existing `depends-on`), so these 38 are genuinely
+      new information with no home. `informs` is *directional influence* — "the types produced
+      by this classification become the method signatures in domain service interfaces" —
+      which is neither requirement nor co-use. Either **add an `informs` kind that carries no
+      ordering** (excluded from the learning path) or leave it unmapped; collapsing it into
+      `composes-with` would claim a symmetry 26 of the 38 do not have.
+      **`relates` (4) splits** — two read as `contrasts-with` ("both address error handling at
+      a layer boundary"), two as interaction. Too few to rule on; decide individually.
+      **The singletons are typos or not edges at all.** `enables` (1) reads as
+      `prerequisite for`; `calibrates` (2) and `precedes` (1) as the `depends-on` family. Four
+      point at *prose phrases* rather than skills — `climax constrains → "Using init() for
+      setup"`, `ask at design time → "Designing a new async integration"`,
+      `active on both ends → "Driver"` — and must be excluded, not mapped.
 - [x] **Skills with two `## Related Skills` sections — the reader now merges them and
       `normalize` folds them into one.** DONE (2026-08-08). Pre-existing in `HEAD`, not caused
       by the normalization — typically a suffixed heading followed by a plain one.

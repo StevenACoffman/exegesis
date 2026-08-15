@@ -131,15 +131,79 @@ func splitKind(rest string) (Kind, string, bool) {
 	if tail, kind, ok := splitReversed(rest); ok {
 		return kind, tail, true
 	}
+	if tail, kind, ok := splitReversedDash(rest); ok {
+		return kind, tail, true
+	}
 	name, tail, ok := splitKindForward(rest)
 	if !ok {
 		return "", "", false
 	}
-	kind := Kind(strings.TrimSpace(name))
-	if !kind.Valid() {
+	kind, ok := canonicalKind(name)
+	if !ok {
 		return "", "", false
 	}
 	return kind, strings.TrimSpace(tail), true
+}
+
+// canonicalKind resolves a dialect's spelling of a kind to the canonical one. A
+// canonical name maps to itself, so this is the single gate every orientation passes
+// through and Valid stays the definition of what may be written.
+//
+// The synonyms are the ones a survey of the 233-skill corpus actually found, with the
+// rationale of every instance read: "combines" always says used-together and "compares"
+// always says alternatives-by-different-means, so both are unambiguous.
+//
+// "prerequisite for" is deliberately absent, and must stay absent. It is the *inverse*
+// of depends-on -- proved by the corpus rather than inferred, since 13 of its 18 edges
+// have their exact flip already present as a depends-on bullet in the other skill. A
+// reader cannot absorb it: the flipped edge belongs in the target's file, and
+// ParseSection only ever speaks for the file it is reading. Mapping it here without
+// flipping would reverse real edges; mapping it *with* a flip would attribute an edge to
+// a skill whose text never declared it. Moving these is a rewrite, not a read.
+func canonicalKind(name string) (Kind, bool) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "combines":
+		return ComposesWith, true
+	case "compares":
+		return ContrastsWith, true
+	case "depends on":
+		return DependsOn, true
+	}
+	k := Kind(strings.TrimSpace(name))
+	return k, k.Valid()
+}
+
+// splitReversedDash matches the "**slug** — kind: why" orientation, the one the books
+// write most and the reader understood least: measured against the corpus, not one of
+// its 110 bullets parsed before this, including the "depends on" spellings an earlier
+// note had called unambiguous.
+//
+// It returns the slug at the head of the tail, exactly as splitReversed does, so the
+// caller extracts targets the same way in every orientation.
+func splitReversedDash(rest string) (tail string, kind Kind, ok bool) {
+	bold, isBold := boldToken(rest)
+	if !isBold || !isSlug(bold) {
+		return "", "", false
+	}
+	after := strings.TrimSpace(afterBold(rest))
+	for _, dash := range []string{"—", "–", "--"} {
+		if trimmed, found := strings.CutPrefix(after, dash); found {
+			after = strings.TrimSpace(trimmed)
+			break
+		}
+	}
+	name, why, found := strings.Cut(after, ":")
+	if !found {
+		return "", "", false
+	}
+	k, valid := canonicalKind(name)
+	if !valid {
+		return "", "", false
+	}
+	// The em dash is load-bearing, not decoration: takeTargets keeps taking targets while
+	// the head parses as one, and a rationale beginning with bare words ("shapes how it is
+	// applied") yields four more targets without a separator it stops at.
+	return bold + " — " + strings.TrimSpace(why), k, true
 }
 
 // splitKindForward takes the kind name off the two kind-first orientations,
@@ -191,6 +255,12 @@ func splitReversed(rest string) (tail string, kind Kind, ok bool) {
 	if !k.Valid() {
 		return "", "", false
 	}
+	// This form has the same latent defect splitReversedDash guards against: with no
+	// separator takeTargets stops at, a rationale of bare words becomes extra targets --
+	// "**alpha** (composes-with) use them together" yields three edges, inventing "use"
+	// and "them". Deliberately NOT fixed here: the one-word fix changes what Normalize
+	// rewrites and fails TestNormalize, so it needs its own before/after over the corpus
+	// rather than riding along with the dialect work. Recorded in TODO.md.
 	return bold + " " + why, k, true
 }
 
