@@ -255,13 +255,18 @@ func splitReversed(rest string) (tail string, kind Kind, ok bool) {
 	if !k.Valid() {
 		return "", "", false
 	}
-	// This form has the same latent defect splitReversedDash guards against: with no
-	// separator takeTargets stops at, a rationale of bare words becomes extra targets --
-	// "**alpha** (composes-with) use them together" yields three edges, inventing "use"
-	// and "them". Deliberately NOT fixed here: the one-word fix changes what Normalize
-	// rewrites and fails TestNormalize, so it needs its own before/after over the corpus
-	// rather than riding along with the dialect work. Recorded in TODO.md.
-	return bold + " " + why, k, true
+	// Consume the separator here rather than leaving it for trimRationale. Two reasons,
+	// and the first is a real defect: without a separator takeTargets stops at, a rationale
+	// of bare words becomes extra targets -- "**alpha** (composes-with) use them together"
+	// yielded three edges, inventing "use" and "them". The em dash gives it one.
+	//
+	// But adding the dash alone left the rationale as "— : why", because this dialect
+	// writes "(kind): why" and the colon was reaching trimRationale as a leading character
+	// it happened to strip. A parser that leaves its own separator in the payload for a
+	// later pass to clean up is one design decision split across two functions; taking it
+	// off here is what makes the dash safe to add.
+	why = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(why), ":"))
+	return bold + " — " + why, k, true
 }
 
 // boldToken returns the contents of a leading "**...**" span.
