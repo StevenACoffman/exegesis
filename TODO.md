@@ -914,13 +914,26 @@ proposes is in the wrong place.
       edge cannot be written to a file that is not there, and deleting the bullet would
       erase the only record that the skill was expected to exist. Decide whether the
       target should be written or the bullet dropped.
-- [ ] **17 sixth-dialect bullets sit outside `## Related Skills` and are never read.**
-      Found while migrating: they live under chapter and option headings
-      (`## Ch. 6 — Secured gRPC`, `## Option C: Service Mesh (Istio)`), where
-      `ParseSection` correctly does not look. 77 of the 94 are inside the section and are
-      now parsed. Whether the other 17 are intended as edges or as narrative prose is a
-      judgement per bullet — do **not** widen the reader's scope to catch them, which
-      would make every bulleted mention of a skill an edge.
+      **A second one, found 2026-08-15 by the heading fix:** `grpc-observability-three-pillar`
+      is named by four skills — `grpc-communication-pattern-selection`,
+      `grpc-l4-lb-failure-mode`, `grpc-load-balancer-selection` and
+      `grpc-security-credential-composition` — and has no directory either. Four references
+      is stronger evidence of an intended skill than one, so decide these together.
+- [x] **17 sixth-dialect bullets sit outside `## Related Skills` and are never read.**
+      DONE 2026-08-15, and **both this entry's framing and its scope were wrong**.
+      They were not under chapter headings by intent: their section heading was written
+      `### Related Skills` — an **H3**. `ParseSection` requires H2 and deliberately rejects
+      deeper levels (there is a test pinning it), so a survey by section attributed them to
+      whatever content heading happened to come last.
+      **The real scope was 3× larger: 17 whole skills, 56 bullets**, their entire section
+      invisible to `index`, `verify` and `normalize`. The other 10 never showed in the
+      dialect survey because their bullets use the canonical form — hidden without being
+      unusual.
+      Fixed by promoting the heading, one character per file. Corpus edges **262 → 280**.
+      The reader is unchanged, which the entry was right about: widening it to accept H3
+      would make any sub-section anywhere an edge list.
+      The 38 bullets still unread are the ones that should be: `relates`, which has no
+      canonical equivalent, and targets naming nothing that exists (see below).
 - [x] **Move the 18 `prerequisite for` bullets by rewrite.** DONE 2026-08-15, but **not
       mechanically — a blanket flip would have injected 3 wrong edges.**
       Of the 18: **12 were corroborated** by the target already declaring the same
