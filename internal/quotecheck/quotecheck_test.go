@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/StevenACoffman/exegesis/internal/quotecheck"
+	skquotecheck "github.com/StevenACoffman/skillet/quotecheck"
 )
 
 // Fixtures are deliberately wordy: a passage shorter than MinPassageWords is dropped
@@ -51,21 +52,21 @@ func TestSegment(t *testing.T) {
 
 func TestPassages(t *testing.T) {
 	t.Parallel()
-	got := quotecheck.Passages(
+	got := skquotecheck.Passages(
 		"The first sentence is plainly long enough. Too short. " +
 			"The third sentence is also comfortably long enough to keep.")
 	if len(got) != 2 {
 		t.Fatalf("want 2 passages with the short one dropped, got %d: %q", len(got), got)
 	}
 	for _, p := range got {
-		if n := len(strings.Fields(p)); n < quotecheck.MinPassageWords {
+		if n := len(strings.Fields(p)); n < skquotecheck.MinPassageWords {
 			t.Errorf("passage %q has %d words, under the %d minimum",
-				p, n, quotecheck.MinPassageWords)
+				p, n, skquotecheck.MinPassageWords)
 		}
 	}
 	// Over-splitting on an abbreviation is safe: the fragments fall under the minimum
 	// and the substantive text is still checked.
-	abbrev := quotecheck.Passages("Consider e.g. the case where the reader is misled badly")
+	abbrev := skquotecheck.Passages("Consider e.g. the case where the reader is misled badly")
 	if len(abbrev) != 1 {
 		t.Errorf("want the substantive remainder kept, got %q", abbrev)
 	}
@@ -206,18 +207,40 @@ func TestCheckIgnoresQuotationsOutsideTheSegment(t *testing.T) {
 
 func TestCheckWithNothingToCheck(t *testing.T) {
 	t.Parallel()
+	// There genuinely is no quotation in either of these, so there is nothing to report.
+	// Contrast the short-quotation case below, which looks similar and is not.
 	for name, body := range map[string]string{
 		"no R segment":                "## I\n\n> a quote of sufficient length to check\n",
 		"R segment with no quotation": "## R\n\nplain prose only\n",
-		"quotation under the minimum": "## R\n\n> too short\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			if got := quotecheck.Check(body, "R",
-				[]quotecheck.Source{{Name: "s", Text: "x"}}); got != nil {
+				[]quotecheck.Source{{Name: "s", Text: "x"}}); len(got) != 0 {
 				t.Errorf("want no findings, got %+v", got)
 			}
 		})
+	}
+}
+
+// TestShortQuotationIsUncheckedNotAbsent pins the behaviour change that came with the
+// promotion to skillet.
+//
+// This used to report nothing, which made a quotation too short to split indistinguishable
+// from a clean pass — a caller counting findings saw zero either way. It now reports one
+// Unchecked finding, so "we did not look" is visible instead of silent.
+func TestShortQuotationIsUncheckedNotAbsent(t *testing.T) {
+	t.Parallel()
+	got := quotecheck.Check("## R\n\n> too short\n", "R",
+		[]quotecheck.Source{{Name: "s", Text: "x"}})
+	if len(got) != 1 {
+		t.Fatalf("want one unchecked finding, got %+v", got)
+	}
+	if got[0].Status != quotecheck.Unchecked {
+		t.Errorf("status = %v, want unchecked", got[0].Status)
+	}
+	if got[0].Missing() {
+		t.Error("a quotation nobody could check reports as a fabrication")
 	}
 }
 
@@ -236,8 +259,12 @@ func TestCheckIgnoresQuotationsInsideCodeFences(t *testing.T) {
 
 func TestSupportCountsLocatedPassages(t *testing.T) {
 	t.Parallel()
-	located := quotecheck.Finding{Passage: "found", FoundIn: "book.txt"}
-	missing := quotecheck.Finding{Passage: "not found"}
+	// Status is authoritative and FoundIn is descriptive; a Finding that set only FoundIn
+	// would be an inconsistent value, which is why both are given here.
+	located := quotecheck.Finding{
+		Passage: "found", Status: quotecheck.Found, FoundIn: "book.txt",
+	}
+	missing := quotecheck.Finding{Passage: "not found", Status: quotecheck.Missing}
 	cases := map[string]struct {
 		findings []quotecheck.Finding
 		want     int
@@ -251,7 +278,7 @@ func TestSupportCountsLocatedPassages(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if got := quotecheck.Support(tc.findings); got != tc.want {
+			if got := skquotecheck.Support(tc.findings); got != tc.want {
 				t.Errorf("Support = %d, want %d", got, tc.want)
 			}
 		})
@@ -264,7 +291,7 @@ func TestSupportOfASkillWithNoQuotationsIsZero(t *testing.T) {
 	// quoting nothing has no evidence at all, which Check reports as no findings.
 	got := quotecheck.Check("## R\n\nplain prose only\n", "R",
 		[]quotecheck.Source{{Name: "s", Text: "plain prose only"}})
-	if n := quotecheck.Support(got); n != 0 {
+	if n := skquotecheck.Support(got); n != 0 {
 		t.Errorf("Support of a skill with no quotations = %d, want 0", n)
 	}
 }
