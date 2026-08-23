@@ -669,6 +669,21 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       held to all six, and a derived gate must not become a way for a malformed book skill to
       escape the contract by dropping enough headings to look like something else. That
       failure mode is the reason to weigh this rather than just do it.
+      **MEASURED 2026-08-23, and the axis is lineage rather than conformance.** Running
+      `lint --check redlines` over the corpus: `gh-cli`, `vale` and `unconventional-commits`
+      each collect **7 errors**, `book2skill` 3, and a book-derived skill 0. Those first
+      three are *shipped* skills — the misjudgment is not about repo-governing meta-skills,
+      it is about **hand-written versus book-derived**, and hand-written shipped skills are
+      the bulk of it. A partial-conformance predicate would therefore be measuring the wrong
+      thing: a hand-written skill has no RIA segments not because it drifted from the format
+      but because it never claimed it.
+      **skillet now carries the shared half** — two closed single-valued fields, audience and
+      lineage, on `manifest.Skill`, with the lineage one the priority. Not built: the trigger
+      is a second checker that would branch on it, and nobody has yet written which rules
+      each kind keeps. When it lands, `--check redlines` reads lineage rather than growing a
+      derived predicate, which also answers the objection this entry records — a malformed
+      book skill cannot escape by shedding headings, because its lineage is declared at
+      creation rather than inferred from its current shape.
 
 ## Convenience gaps (from the gemini_skills gap analysis, 2026-08-05)
 
