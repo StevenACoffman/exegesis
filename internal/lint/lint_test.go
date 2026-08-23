@@ -10,6 +10,7 @@ import (
 	"github.com/StevenACoffman/exegesis/internal/lint"
 	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/skill"
+	"github.com/StevenACoffman/skillet/skilllens"
 )
 
 const riaBody = "## R\n\nquote\n\n## I\n\nmethod\n\n## A1\n\nexample\n\n" +
@@ -242,11 +243,21 @@ func TestRedlines(t *testing.T) {
 
 func TestSkillLensTier(t *testing.T) {
 	t.Parallel()
-	// lensCats returns the skilllens-* finding categories, in emission order.
+	// lensCats returns this tier's finding categories, in emission order.
+	//
+	// It switches over the constants rather than grouping on a "skilllens-" prefix,
+	// which is what it used to do. The prefix is gone: skillet owns these names now,
+	// because two consumers reading one detector and spelling its output differently is
+	// drift, and it had already happened between this repo and canonizer. A prefix would
+	// also have to be reinvented here to say which package found it, which is provenance
+	// in a field that classifies.
 	lensCats := func(s *skill.Skill, opts lint.Options) []string {
 		var got []string
 		for _, d := range lint.Check(s, opts) {
-			if strings.HasPrefix(d.Category, "skilllens-") {
+			switch d.Category {
+			case skilllens.CategoryNoFailureMode,
+				skilllens.CategorySoftening,
+				skilllens.CategoryNoBoundary:
 				got = append(got, d.Category)
 			}
 		}
@@ -264,7 +275,11 @@ func TestSkillLensTier(t *testing.T) {
 
 	// No failure branch, no boundary section, and >=3 softening phrases: all three fire.
 	weak := body("## Steps\n\nDo the thing as appropriate, feel free to adjust, it depends.\n")
-	want := []string{"skilllens-failure", "skilllens-softening", "skilllens-boundary"}
+	want := []string{
+		skilllens.CategoryNoFailureMode,
+		skilllens.CategorySoftening,
+		skilllens.CategoryNoBoundary,
+	}
 	if got := lensCats(weak, lint.Options{SkillLens: true}); !slices.Equal(got, want) {
 		t.Errorf("weak skill: got %v, want %v", got, want)
 	}
