@@ -1490,7 +1490,10 @@ registration seam were both refused, is in `skillet/TODO.md`.
 
 Two of exegesis's three change value, and that is the point rather than a side effect.
 
-- [ ] **Swap the three literals in `internal/lint/skilllens.go` for the constants.**
+- [x] **Swap the three literals in `internal/lint/skilllens.go` for the constants.** DONE —
+      verified 2026-08-23: the file uses `skilllens.CategoryNoFailureMode`,
+      `CategorySoftening` and `CategoryNoBoundary`, and the only surviving `skilllens-`
+      string in the repository is a comment recording that the prefix is gone.
   `skilllens-softening` → `CategorySoftening` (`"softening"`), `skilllens-failure` →
   `CategoryNoFailureMode` (`"no-failure-mode"`), `skilllens-boundary` →
   `CategoryNoBoundary` (`"no-boundary"`). The prefix goes because across thirty category
@@ -1498,13 +1501,17 @@ Two of exegesis's three change value, and that is the point rather than a side e
   only observed defect is one concept spelled two ways — so a prefix defends a hazard that
   has never occurred and manufactures the one that has. Twenty-seven of the thirty existing
   values are unprefixed; these three were the outlier.
-- [ ] **`skilllens-failure` was also named backwards, and the rename fixes it.** It fires
+- [x] **`skilllens-failure` was also named backwards, and the rename fixes it.** DONE with
+      the swap above. It fires
   when `FailureMechanisms` returns **nothing** — it means *no failure handling was
   written* and reads as *a failure occurred*. Two of the three detectors fire on absence,
   so naming them for the dimension inverted their sense. The new names follow canonizer's
   existing convention: `no-anchor` for never declared, `anchor-absent` for declared and not
   found.
-- [ ] **Rewrite `internal/lint/lint_test.go:249`, which groups on the prefix.** It does
+- [x] **Rewrite `internal/lint/lint_test.go:249`, which groups on the prefix.** DONE, and it
+      had to land with the swap rather than after it: `strings.HasPrefix(d.Category,
+      "skilllens-")` would not have failed once the literals changed, it would have matched
+      zero diagnostics and passed vacuously. It does
   `strings.HasPrefix(d.Category, "skilllens-")` to collect that family out of a mixed set.
   Replace with a switch over the three constants — slightly longer and strictly better,
   since it then checks the identifiers the kernel publishes rather than a string convention
