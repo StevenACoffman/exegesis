@@ -923,7 +923,27 @@ proposes is in the wrong place.
       rather than `" "`, exactly as `splitReversedDash` does — but it changes what
       `Normalize` rewrites and fails `TestNormalize`, so it needs its own before/after
       over the corpus rather than riding along with the dialect work.
-- [ ] **`ml-data-pipeline-type-integrity` names a skill that does not exist.** Its
+- [x] **Two skills named by market skills "do not exist".** RESOLVED 2026-08-23 — **they
+      exist, both of them, and the premise was wrong.** `ml-pipeline-integrity-pre-training`
+      is in `books/merged/all-books-v1/` and installed in four consuming repositories;
+      `grpc-observability-three-pillar` is in `books/grpc-up-and-running/` and carries a
+      correct `superseded-by` edge to `merged/all-books-v1/grpc-observability-three-pillar-with-trace-log-bridge`,
+      which names it back in `source_skills`. The merge ran correctly in both directions.
+      They are absent from the **market corpus** for two different and both-correct reasons:
+      the grpc one is a merged *parent*, whose absence is merge-skills' retirement policy
+      working as designed; the ml one is a merged *child*, and **23 of 27 merged children are
+      likewise absent** — it is the norm, not an anomaly.
+      **DECIDED 2026-08-23, and it settles the class rather than these two.** The market is a
+      **curated end product**, not a complete tree. Development of skills from books moves to
+      a separate private archival repository. Dangling references in the curated product
+      **may remain**: they are a historical byproduct and a provenance mechanism, and erasing
+      them would destroy the record of where a skill came from.
+      **What must change is that they are silent.** Measured across the market corpus: **36
+      unqualified edges, 7 distinct dangling targets, 13 references** — and the two in this
+      entry were not the largest. `incident-management-role-separation` and
+      `four-golden-signals-monitoring` are each named by three skills and nobody noticed,
+      which is why two instances became a TODO item and five did not.
+      Original entry: **`ml-data-pipeline-type-integrity` names a skill that does not exist.** Its
       `prerequisite for` bullet targets `ml-pipeline-integrity-pre-training`, which has no
       directory in the tree. Left in place by the migration rather than guessed at: the
       edge cannot be written to a file that is not there, and deleting the bullet would
@@ -1396,6 +1416,29 @@ check.
   `speclint` is and is not: **the spec, not the style guide.** It matters because the
   next person to extend the lint will reach for the same document, and half of it is
   not a specification. Matching entries in `skillet` and `skillsaw`.
+
+- [ ] **`verify` cannot tell an external reference from a broken one, and the curated-market
+      decision makes that distinction load-bearing.** Both read the same today: an
+      unqualified target absent from this tree, and a `merged/all-books-v1/…` target in
+      another one. Since the market is now a curated end product whose dangling edges are
+      *expected* — provenance, not defects — a gate that reports them identically either
+      cries wolf on every curated tree or stays silent on real typos.
+      Shape: report a tree as **incomplete rather than broken** when its dangling targets
+      resolve somewhere the tree does not include, and keep an error for a target that
+      resolves nowhere. `related.Qualified` already recognises the cross-tree form, so the
+      reader half exists; what is missing is a verdict that distinguishes them.
+      **The count that motivates it** (2026-08-23): 7 distinct dangling targets across 13
+      references in the market corpus, of which the two previously filed as bugs were among
+      the smallest.
+
+- [ ] **A fully populated tree over just the curated set needs its own index or field.**
+      Follows from the same decision. `index` builds a learning path over `depends-on` edges,
+      and in a curated tree some of those point outside it — so the path is either
+      silently truncated or silently includes unreachable nodes. Neither is stated today.
+      Options, unranked and undecided: a separate index file for the curated subset; a field
+      on the existing index marking an edge external; or a manifest that records which
+      targets are out of tree. Related to the one-tree-many-manifests entry below, which is
+      about copies of one tree rather than about a subset of one.
 
 - [ ] **`index` / `merge-index` should have an opinion about one tree, many manifests.**
   `superpowers` supports nine harnesses — Claude Code, Codex, Cursor, Devin, Gemini,
