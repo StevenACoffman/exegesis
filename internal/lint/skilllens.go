@@ -36,15 +36,15 @@ func skillLens(s *skill.Skill) []finding.Diagnostic {
 	doc := markdown.Parse(s.Body)
 	var ds []finding.Diagnostic
 	if len(skilllens.FailureMechanisms(doc)) == 0 {
-		ds = append(ds, lensDiag(finding.SeverityWarning, "skilllens-failure",
+		ds = append(ds, lensDiag(finding.SeverityWarning, skilllens.CategoryNoFailureMode,
 			"no failure-mechanism encoding: no inline failure branch or failure-mode section"))
 	}
 	if n := len(skilllens.SofteningPhrases(doc)); n >= softeningLimit {
-		ds = append(ds, lensDiag(finding.SeverityWarning, "skilllens-softening",
+		ds = append(ds, lensDiag(finding.SeverityWarning, skilllens.CategorySoftening,
 			fmt.Sprintf("%d softening phrases hedge the instructions (>= %d)", n, softeningLimit)))
 	}
 	if len(skilllens.BlacklistSections(doc)) == 0 {
-		ds = append(ds, lensDiag(boundarySeverity, "skilllens-boundary",
+		ds = append(ds, lensDiag(boundarySeverity, skilllens.CategoryNoBoundary,
 			"no boundary / counter-example section (what not to do)"))
 	}
 	return ds

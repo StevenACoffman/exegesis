@@ -1107,6 +1107,25 @@ against a README.
   **`quotecheck` is deliberately NOT promoted** — its 2nd consumer is the knowledge-base
   ingestion tool, which does not exist. One prospective consumer is not evidence.
   canonizer adopting `textnorm` is that repo's commit; the promotion is what unblocks it.
+  - [ ] **When it is promoted, expect a signature change exegesis does not need.**
+    `gnosis` (`~/Documents/git/gnosis/SPEC.md` §4.3) decided against a PDF extractor, so
+    binary sources are admitted as `referenced` — hash and URI recorded, **no local text
+    kept**. A caller in that state has no haystack, and passing an empty one reports every
+    quote as fabricated, which is the worst available default. So the promoted package needs
+    a third outcome — checked / unchecked — beside the absent list, making "no source text
+    was available" a stated fact rather than an inferred zero (the
+    `timeseries.Verdict.Compared` discipline). **Every exegesis source is archived text, so
+    exegesis never reaches that state**; the addition is purely gnosis-driven. Recorded here
+    so the change arrives with a reason rather than looking like churn.
+    **It arrived, and this entry did its job — v0.18.0 (2026-08-21).** `quotecheck/status.go`
+    carries `Status` with `Unchecked` as the **zero value**, and `locate` returns it when
+    there are no haystacks. The prediction held in both halves: the signature did change, and
+    exegesis did not need it. Worth keeping rather than deleting, because the zero-value
+    choice is the part to notice — a `Finding` nothing populated reads as *not checked*, never
+    as *checked and clean*, so `Finding.Missing()` is deliberately false for an `Unchecked`
+    finding and a caller that forgets to run the guard fails closed. exegesis benefits from
+    that even while never reaching the state, since it is what stops a future refactor from
+    turning a skipped check into a pass.
   Original entry: `textnorm.Fold` folds whitespace runs *and* typographic
   characters before comparing a quotation to its source. **canonizer answers the same
   question differently:** `internal/verify.normalize` is
@@ -1150,6 +1169,28 @@ against a README.
   declared, judged, or opted into**. Worth recording against skillet's open note that a
   general `Applicability` mechanism should wait until a shape repeats — this may be the
   repeat.
+  **Resolved in skillet 2026-08-22, and this entry supplied a member that does not exist.**
+  `Convention` was counted as the second member of a two-member family, and a grep across
+  all six repositories finds **zero** occurrences — it is a description of `coherence`'s
+  code, proposed here, never built. So the family it was counted into was a family of one.
+  Two things came out of counting properly, and neither is a type.
+  **gnosis had already shipped the mature version, and nobody had counted it** because it
+  is not a bare predicate: `internal/lint` carries `Check{Name, Applies func(*Snapshot)
+  (bool, string), Run}`, a `Skip{Check, Reason}` record, and `Report.Skipped`. That is this
+  entry's idea with the part this entry left out — the *reason*, as a first-class output.
+  **The answer is a rule, not an `Applicability` type**, because the five real sites
+  (skillsaw dim 3 twice, skillsaw dim 4/8, adh, gnosis) each suppress a *different* thing —
+  a deduction, a whole check, or nothing at all — deliberately, because their output shapes
+  differ. The rule, from gnosis's package doc: *applicability is derived, not declared, and
+  a run states what it skipped; a check that silently declines is indistinguishable from
+  one that found nothing.*
+  **What that means here is narrower than this entry hoped and still worth doing.** If the
+  orphan gate is built, derive its applicability from the corpus as this entry says — and
+  when it does not apply, **say so and say why**, in whatever channel `lint` already uses.
+  Do not wait for a shared type; there is not going to be one. If exegesis ever grows a
+  *report* with a skipped section the way gnosis's has, that is the trigger for promoting
+  `Skip{Check, Reason}` — a second consumer emitting a check report is the condition, and
+  exegesis would be it.
 - [ ] **`skills-manifest.json` records identity but not origin or verdict.**
   `skillet/manifest.Skill` is `{slug, dir, sha256, test_prompts}`. A `qvr.lock` entry
   carries the resolved commit, a subtree hash of the exact bytes installed, the scan
@@ -1163,3 +1204,345 @@ against a README.
   `skillex`'s SQLite index for `INDEX.md` (its "same state → same index" property is right,
   but the corpus is 233 skills — an index bought before a measurement is a second source of
   truth about which edges exist).
+
+## Agent-Blue Survey (2026-08-15)
+
+Source: a survey of `~/Documents/agent-blue` (22 projects — the sources the practice came
+from, several already absorbed). Each claim checked against both codebases. Two claims from
+an earlier README-level pass did not survive and are retracted below.
+
+- **Retraction — `modelith render --check` is already implemented here.** An earlier pass
+  claimed `INDEX.md` had modelith's generated-doc drift exposure with no gate. It does not:
+  `cmd/index/index.go:23` carries `Check bool` ("compare against the existing file and exit
+  1 if stale"), and `cmd/normalize/normalize.go:22` has the same. modelith's
+  `render --check` ("verify the committed output is up to date; non-zero exit on drift",
+  `cmd/modelith/main.go:461`) is the same pattern, arrived at independently. Nothing to
+  adopt. **Worth propagating instead: canonizer has no equivalent** — it parses rulesets and
+  never calls `ruleset.Render`, so a stored ruleset can be parseable yet non-canonical.
+  Filed in that repo.
+- [ ] **OKF as the frontmatter contract `lint` gates, if the knowledge base adopts it.**
+  `agent-blue/knowledge-catalog/okf/SPEC.md` (Open Knowledge Format v0.2, Apache-2.0) is a
+  published spec for exactly the corpus shape we already store — a directory of markdown
+  with YAML frontmatter, no schema registry, no required tooling. Its §5 fields are the ones
+  we were about to invent: `sources` (provenance), `generated` / `verified` (trust), `status`
+  (draft/stable/deprecated lifecycle), `stale_after`. Three properties make it a good fit for
+  `speclint`-shaped gating specifically:
+  - **Trust tiers are derived by a pure function over frontmatter** (§5.3): no `verified`
+    key ⇒ *unverified*; `verified` by non-`human:` actors only ⇒ *machine-confirmed*;
+    `verified` by a `human:<id>` actor ⇒ *human-reviewed*. That is a fold over an actor
+    prefix — deterministic, no model, exactly `speclint`'s idiom.
+  - **`stale_after` is an absolute date, not a relative TTL**, chosen so the staleness
+    decision "is a plain date comparison with no reference to when the concept was read"
+    (§5.5). A TTL is read-time-dependent; a date is a pure function. That reasoning is the
+    house standard, stated by someone else.
+  - **§11 conformance requires consumers NOT to reject a concept with no trust
+    frontmatter.** Adoption is incremental by specification; no big-bang migration, and no
+    gate that fails an unannotated corpus on day one.
+  Not scheduled: this waits on the knowledge-base decision. Recorded so that when it lands,
+  `lint` extends rather than a second frontmatter validator appears.
+  **Evaluated in skillet 2026-08-17 and deliberately not promoted there**, because this entry
+  and the two sibling OKF entries are all conditional — three repos wanting a thing *if
+  something else happens* is one prospective consumer counted three times, and skillet already
+  carries `provenance` with zero importers as the precedent. The trust vocabulary lands in
+  whichever repo first *stores* trust metadata, and moves up only on a second consumer.
+  Note for when it does: §5.3's tiers are a fold over an actor prefix and §5.5's `stale_after`
+  is an absolute date, so both are `speclint`-shaped — but §11 forbids rejecting a concept for
+  missing an optional family, so the gate must report rather than fail on an unannotated
+  corpus.
+
+  **Updated 2026-08-22 — the condition is half-met and the entry's own framing is what to
+  fix.** The knowledge-base decision has landed: gnosis exists, conforms to OKF, and now
+  *stores* `stale_after` (§5.5) — parsed, persisted, and read by two of its commands. So
+  the freshness half of this entry is no longer conditional; it is answered, in another
+  repo, with no shared type and no friction. The trust half (`generated` / `verified`) is
+  specified in gnosis §14 and unbuilt.
+
+  Two corrections carry back here.
+
+  - **The trigger this entry quotes has been replaced.** skillet moved it from *the first
+    repo that stores trust metadata* to **the second repo that classifies an actor or
+    derives a trust tier**, because gnosis shipped `Actor` — a closed three-kind enum that
+    rejects two of OKF §7's three forms — *without touching trust metadata at all*. Storage
+    was never the event; classification is, and a storage trigger could not have fired.
+  - **And when it fires, only the fold is promotable.** Not the `generated`/`verified`
+    record types: gnosis's `okf` retains frontmatter *verbatim* because re-encoding YAML
+    cannot round-trip, so a struct would be decode-only. That matters to this entry
+    specifically, because *"lint extends rather than a second frontmatter validator
+    appears"* assumed a shared record type would be the extension point. It will not be.
+    The extension point is a pure fold over actor strings, and the corpus shape stays
+    exegesis's own.
+
+  Nothing to schedule here yet — exegesis still has no `verified` frontmatter and no
+  second-consumer claim on the fold. What changed is that this entry can stop describing
+  the knowledge base as hypothetical.
+- [ ] **"Every instruction the agent reads must be backed by a working command."** That is
+  Principle 1 of `agent-blue/agentic-harness-bootstrap`, and its
+  `templates/verify-harness.sh.tmpl` enforces it by *parsing the document's own module table
+  out of `ARCHITECTURE.md` and checking each path exists* — the doc's claims about the repo
+  checked against the repo. `lint` already validates body links and `skillsaw` dim 6 scores
+  link reachability, so the link half is covered. The uncovered half is **commands**: a skill
+  body that names `make verify` or `bw sync` is making a checkable claim, and nothing checks
+  it. Narrow, deterministic, and the same shape as `quotecheck` — does this run of words
+  correspond to something that exists. Scope carefully: resolving a command to an executable
+  is environment-dependent in a way link resolution is not, so this is a *warning* tier, and
+  probably opt-in like `--check redlines`.
+- Deliberately NOT adopted: `SkillLens`'s `Mode` schema (`skilllens/schema/modes.py` —
+  success/failure patterns each carrying `evidence` and `source_trajectory_ids`) is a
+  genuinely better provenance model for a B-segment than ours, but it belongs to whoever
+  *authors* skills from trajectories, not to the structural gate; recorded in skillsaw's
+  TODO instead. `leafwiki` is a serving surface, off-axis for a gate CLI.
+
+## Agent-Fuschia Survey (2026-08-18)
+
+Source: a survey of `~/Documents/agent-fuschia` (26 repositories). Two items reach the
+structural gate; the rest of that survey lands on gnosis and canonizer.
+
+- [ ] **Tree closure — `verify` proves every skill is well-formed, not that every file is
+  accounted for.** `manifest` records the skills found; nothing fails a tree containing a
+  file that belongs to no skill. `agent-fuschia/vac-protocol` names this exact failure
+  `unlisted-file` and treats bundle closure as a structural property alongside
+  hash-identity (§4), and `qvr sync` enforces the same invariant from the other end —
+  anything in an agent directory that is not in the lock is hidden from the agent.
+  Why it matters here specifically: a stray `SKILL.md.bak`, a half-migrated
+  `test_cases.json`, or a directory that lost its `SKILL.md` are all invisible to `verify`
+  today, and all three are states this tree has actually been in. Scope it narrowly — report
+  unaccounted files under a verified tree, warning tier, `--strict` to fail — because the
+  set of legitimately-unlisted files (editor droppings, `references/`, `scripts/`) is
+  repo-specific and belongs in config rather than in the check.
+- [ ] **Say which act the gate performed.** `vac-protocol` §4 insists structural
+  verification and semantic replay are "two distinct acts, never to be conflated", and that
+  the structural verifier "never performs [replay] and says so in its output" — because
+  **"a structural PASS means the bundle is *internally honest*, not that the issuer's
+  grader agrees."** exegesis is purely the structural half by charter ("proves a tree is
+  well-formed; says nothing about whether a skill is any *good*"), and the README says so,
+  but `verify`'s own output does not. A green `verify` read by an agent or a newcomer is
+  easily taken for a quality verdict. One line in the human output and one field in
+  `skills-manifest.json` (`semantic_verification: "not-performed"`) closes it, and pairs
+  with `vac-gate`'s rule that "every PASS states what ran and what deliberately did not — a
+  gate that cannot say what it skipped is worse than no gate."
+- Deliberately NOT adopted: `agent-fuschia/lexicon`, despite being the closest structural
+  neighbour in the whole survey — a Go, MIT, markdown-native DSL with a hexagonal
+  `domain`/`ports`/`adapters` layout and a `--check` drift gate. Its `Keyword`/`Role`
+  separation is genuinely valuable but it solves a *vocabulary* problem, and exegesis gates
+  structure over a fixed schema where the vocabulary is `agentskills.io`'s and not ours to
+  reinterpret. Recorded against gnosis, which does own its vocabulary.
+
+## `superpowers` Deep Read (2026-08-22)
+
+Source: `~/Documents/agent-green/superpowers` at v6.3.0, opened after the `agent-green`
+survey had filed it by file count — once as a harness, once as a skill catalogue. It is a
+**measurement discipline for skills**, and it is the only surveyed project that treats a
+skill's wording as something to be tested rather than reviewed. Written up in gnosis's
+`manifesto.md`. Most of it lands on `skillsaw` and `skillet`; three items are exegesis's,
+and the first is the best one because it converts a behavioural finding into a mechanical
+check.
+
+- [ ] **A `description` that summarises the workflow is a defect, and it is checkable.**
+  `checkRedlines` #5 already tests that a description *states a trigger condition*
+  (heuristic). `superpowers` supplies the complementary rule and, unusually, the
+  measurement behind it:
+
+  > Testing revealed that when a description summarizes the skill's workflow, an agent
+  > may follow the description instead of reading the full skill content. A description
+  > saying "code review between tasks" caused an agent to do ONE review, even though
+  > the skill's flowchart clearly showed TWO reviews.
+
+  The description is loaded into every session; the body is loaded on demand. A
+  description that paraphrases the procedure therefore creates a shortcut the agent can
+  take, and **the better the paraphrase the more reliably the body is skipped.** Their
+  rule is `description` = triggering conditions only, never process.
+
+  This is the rare structural rule whose justification is measured behaviour rather
+  than style, which is what makes it exegesis's rather than a matter of taste. It is
+  also mechanically approachable in a way #5 is not: #5 must recognise a trigger, which
+  is open-ended, while this one looks for procedure — imperative verb sequences,
+  enumerated steps, `then`/`after`/`between`, and any restatement of a heading that
+  appears in the body. Start with the last of those: **a description containing a
+  section title from its own body is a summary of that section**, and that is a string
+  comparison, not a heuristic.
+
+  Land it as an opt-in `--check` tier beside `redlines`, not in `speclint`. `speclint`
+  holds the agentskills.io contract, and the spec does not say this; see the next item.
+
+- [ ] **Draw the line between the contract and the vendor's prose advice, in writing.**
+  `speclint` gates `agentskills.io` frontmatter — required keys, the allowlist, the
+  1024-character cap — and that is a machine-readable contract exegesis is right to
+  enforce. Anthropic also publishes *authoring guidance*, which is prose, and the two
+  arrive from the same source and read as one authority.
+
+  `superpowers` draws the line explicitly and is worth copying: it vendors the guidance
+  verbatim as a reference, accepts the contract from it, and refuses the prose —
+  *"PRs that restructure, reword, or reformat skills to 'comply' with Anthropic's
+  skills documentation will not be accepted without extensive eval evidence showing the
+  change improves outcomes."* Their own head-to-head wording tests, several of which
+  contradict the published advice, are why.
+
+  For exegesis this is one paragraph in the `speclint` delegation note saying what
+  `speclint` is and is not: **the spec, not the style guide.** It matters because the
+  next person to extend the lint will reach for the same document, and half of it is
+  not a specification. Matching entries in `skillet` and `skillsaw`.
+
+- [ ] **`index` / `merge-index` should have an opinion about one tree, many manifests.**
+  `superpowers` supports nine harnesses — Claude Code, Codex, Cursor, Devin, Gemini,
+  Copilot, Grok, Kimi, OpenCode, Pi, Hermes, Antigravity — from **fourteen `SKILL.md`
+  files in a single `skills/` directory**. Each `.<harness>-plugin/plugin.json` carries
+  `"skills": "./skills/"` and nothing else. Zero duplication across nine hosts.
+
+  That is the counter-example to the pattern the survey found everywhere else, where a
+  repository's skill count is one tree multiplied by host (`.agents/skills`,
+  `.claude/skills`, `.cursor/skills`, …) and the copies drift. The family's answer to
+  the drift has been a proposed cross-repository hash check in `skillsaw`; this is the
+  layout that makes the check unnecessary, because there is only ever one copy to hash.
+
+  exegesis owns the tree and its index, so it is the tool that can say so: a tree whose
+  skills appear at more than one path is reporting a duplication finding, and the
+  remedy is a manifest rather than a second copy. Cheap to detect — same `slug`, more
+  than one directory, and `skillet/identity.Hash` says whether the copies have already
+  diverged.
+
+- Note, not a work item: the `<Good>` / `<Bad>` HTML wrappers around code examples that
+  `superpowers` uses throughout its skills expose a parsing defect in `skillet/markdown` —
+  a fenced block nested in an HTML block with no intervening blank line is never blanked
+  from `Doc.Prose`, so `skilllens` reads the example code as the skill's own instruction.
+  Verified and filed in `skillet/TODO.md`. It reaches exegesis through any check that reads
+  `Doc.Prose`; nothing to do here beyond taking the fix when it lands.
+
+## Commissioned Gap Report — One Item Survives (2026-08-22)
+
+Source: `~/Documents/agent-green/FPF/exegesis_topten.md`, ten proposed gaps, checked
+against this codebase rather than filed. Nine do not survive: they cite a re-survey of the
+same corpus this family already absorbed, and several describe files exegesis does not have
+(`.skills/ontology.yml` is `coherence`'s, proposed here as though it were ours) or work
+already done elsewhere. The full reasoning is in `skillet/TODO.md`, which took the same
+report for the kernel; it is recorded once rather than seven times.
+
+One idea is real, is not in any backlog in this family, and is exegesis's:
+
+- [ ] **Nothing checks that a skill's prose and its `test-prompts.json` changed together.**
+  A `SKILL.md` can be rewritten while its test prompts stay as they were, and every gate
+  passes: `lint` sees well-formed frontmatter, `verify` sees a well-formed tree, `tests`
+  sees a well-formed prompts file, and `skillsaw` scores a skill whose behavioural
+  assertions describe the previous version. That is `coherence`'s thesis — *tests pass and
+  the repo still drifts* — applied to the one coupling exegesis actually owns. `coherence`
+  is already credited in this file for `OrphanEndpoints`; this is a different meter from the
+  same tool.
+  **The obvious implementation does not work and the report proposing it shows why.** It
+  suggested comparing filesystem mtimes with a ten-second tolerance. Git does not preserve
+  mtimes — a fresh clone stamps every file at checkout time — so the check reports nothing
+  on CI and reports everything after a rebase, and the tolerance is an uncalibrated constant
+  of exactly the kind this family refuses. Recorded because it is the first thing anyone
+  will reach for.
+  The tractable version is a **diff-scoped** check rather than a filesystem one, and it
+  belongs where exegesis already knows the tree: given a set of changed paths (from
+  `git diff --name-only`, supplied by the caller rather than shelled out to — the
+  environment boundary this file draws for the checkable-claims item above), report a skill
+  whose `SKILL.md` is in the set and whose `test-prompts.json` is not. Advisory, never
+  blocking: an editorial fix to a sentence legitimately needs no test change, and a gate
+  that fires on those teaches people to pass `--no-verify`. The `Convention bool`
+  applicability pattern already recorded here is the right shape — only meaningful in a tree
+  that demonstrably pairs the two files, and skipped with a reason where it does not.
+  Open question worth settling before building: whether this is exegesis's (structure — the
+  two artifacts are coupled) or `skillsaw`'s `preflight` (quality — the score is stale).
+  It reads structural, which is why it is filed here.
+  **SETTLED 2026-08-22: it is not exegesis's, and the question above was posed wrongly.**
+  Both halves of the framing were false. `preflight`'s own help reads *"structural gate:
+  reject an edit that breaks structure, whatever it scored"* — so both tools do structure,
+  and "quality" was never the distinction. What separates them is **scope**: exegesis grades
+  an artifact *as it stands*, `preflight` grades *an edit*, explicitly positioned "between
+  writing an edit and deciding whether to keep it".
+  The coupling defect is inherently about a change — a `SKILL.md` rewritten while its
+  prompts still describe the previous version is invisible in a single snapshot — so it is a
+  snapshot-versus-delta question, and **exegesis is snapshot-shaped by construction**: it
+  calls `manifest.Build` once and never `manifest.Diff`, so it holds no baseline to compare
+  against. Giving it one would duplicate `skillsaw changed`.
+  Landed as: the missing datum in `skillet/manifest` (`Skill.TestPrompts` records a *path*,
+  not a hash, so a delta cannot see the prompts change), and the gate in `skillsaw
+  preflight`. Both filed in those repos.
+  **What stays exegesis's** is what this entry got right and should not be confused with the
+  gate: `tests` validates that a `test-prompts.json` is well-formed, composed, and
+  migratable. *Is this pair in sync* is a different question from *is this file correct*,
+  and only the second needs no baseline.
+
+## Adopt `skilllens` Category Constants (2026-08-22)
+
+`skillet/skilllens` now exports `CategoryNoFailureMode`, `CategorySoftening`, and
+`CategoryNoBoundary`. The reason it does is a defect here: **exegesis emitted
+`skilllens-softening` while canonizer emitted `softening` for the same
+`skilllens.SofteningPhrases` call** — one kernel detector, two names, which is the drift
+`skillet/finding`'s untyped `Category` was always going to allow. The kernel now owns the
+name wherever it owns the detector; the full reasoning, including why a closed enum and a
+registration seam were both refused, is in `skillet/TODO.md`.
+
+Two of exegesis's three change value, and that is the point rather than a side effect.
+
+- [ ] **Swap the three literals in `internal/lint/skilllens.go` for the constants.**
+  `skilllens-softening` → `CategorySoftening` (`"softening"`), `skilllens-failure` →
+  `CategoryNoFailureMode` (`"no-failure-mode"`), `skilllens-boundary` →
+  `CategoryNoBoundary` (`"no-boundary"`). The prefix goes because across thirty category
+  values in the family there is not one same-word-different-meaning collision, while the
+  only observed defect is one concept spelled two ways — so a prefix defends a hazard that
+  has never occurred and manufactures the one that has. Twenty-seven of the thirty existing
+  values are unprefixed; these three were the outlier.
+- [ ] **`skilllens-failure` was also named backwards, and the rename fixes it.** It fires
+  when `FailureMechanisms` returns **nothing** — it means *no failure handling was
+  written* and reads as *a failure occurred*. Two of the three detectors fire on absence,
+  so naming them for the dimension inverted their sense. The new names follow canonizer's
+  existing convention: `no-anchor` for never declared, `anchor-absent` for declared and not
+  found.
+- [ ] **Rewrite `internal/lint/lint_test.go:249`, which groups on the prefix.** It does
+  `strings.HasPrefix(d.Category, "skilllens-")` to collect that family out of a mixed set.
+  Replace with a switch over the three constants — slightly longer and strictly better,
+  since it then checks the identifiers the kernel publishes rather than a string convention
+  that nothing enforces. `lint_test.go:267`'s `want` slice changes with it.
+  **Nothing else breaks.** exegesis, skillsaw, and adh all have **zero** `.Category` read
+  sites, so no production path parses these strings; the change is confined to emission and
+  that one test.
+
+## Commissioned Gap Report, Round Two — Nothing Lands (2026-08-22)
+
+Source: `~/Documents/agent-green/FPF/exegesis_todo.md`, successor to the `exegesis_topten.md`
+assessed above under *"One Item Survives"*. Checked; nothing lands. **Full reasoning is in
+`skillet/TODO.md` under "Round Two, and What Asking for Code-Reality Verification Actually
+Bought"**, recorded once for the family.
+
+Its one finding is the artifact drift gate — `SKILL.md` rewritten while `test-prompts.json`
+stays put — which is the item already above, and it now proposes *"a diff-scoped check (e.g.
+via `git diff --name-only`)"*. **That is this file's correction, returned.** Round one
+proposed comparing filesystem mtimes with a ten-second tolerance; the entry above records
+why that cannot work — git does not preserve mtimes, so the check reports nothing on CI and
+everything after a rebase. The diff-scoped form exists only because it was written here.
+
+That is the whole of the round's contribution to exegesis, and the entry above already
+carries the part still undecided: whether the check is exegesis's (structure) or skillsaw's
+`preflight` (quality). Neither round addressed it.
+
+The addendum proposes a skill-locking layer — a `skills-lock.json` of commit and subtree
+hashes, against prompt poisoning and upstream drift. **Already implemented, elsewhere in the
+family, under a different name.** `steve-skill-market/skill-install` writes
+`.agents/skill-manifest.yml` carrying the marketplace git SHA and a normalised source URL,
+supports `--from-manifest` for reinstall, and `skill-diff` reports what would change if a
+skill were updated. The gap between that and the proposal is a per-skill subtree hash rather
+than the marketplace HEAD — worth having if a skill is ever installed from somewhere other
+than the market, and not worth a file of its own before then.
+
+## `refuseIfCasesWouldBeLost` Becomes a Predicate Call (2026-08-22)
+
+`skillet/testprompts` is gaining `File.DropsCases()` — a predicate for the one rewrite of
+seven that destroys work rather than reshaping it. The decision record is in
+`skillet/TODO.md`; this entry is what changes here.
+
+- [ ] **Replace the raw-JSON re-read in `cmd/tests` with the predicate.**
+      `refuseIfCasesWouldBeLost` unmarshals the file a second time into a throwaway
+      `{Tests, TestCases []json.RawMessage}` to detect both keys being populated. Its
+      comment is right about why it does not pattern-match `File.Rewrites` — *"pattern-
+      matching a human-readable string to decide whether to destroy data would break the
+      first time that wording changed"* — and that is an argument for a predicate, which is
+      what skillet is adding, rather than for the second parse.
+      **What the duplication actually costs, which the comment does not say:** the
+      judgement *which shapes destroy work* now lives in two modules. `Parse` records the
+      two-keys case and exegesis independently re-detects it, so a future container shape
+      that also drops data would be recorded by skillet and **silently not refused here**.
+      That is information leakage in the §4 sense, and the failure mode is quiet.
+      The refusal message should keep its counts — it reports how many cases sit under each
+      key, which is more useful than a bare refusal — so take the count form if skillet
+      provides one, and keep the "merge them by hand first" instruction either way.

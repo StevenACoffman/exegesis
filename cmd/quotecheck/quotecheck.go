@@ -15,6 +15,7 @@ import (
 
 	"github.com/StevenACoffman/exegesis/cmd/root"
 	checker "github.com/StevenACoffman/exegesis/internal/quotecheck"
+	"github.com/StevenACoffman/skillet/quotecheck"
 	"github.com/StevenACoffman/skillet/skill"
 )
 
@@ -141,7 +142,7 @@ func (cfg *Config) loadSources() ([]checker.Source, error) {
 // number the gate compares and the number the tally prints cannot drift apart. Without
 // --min-support the output is what it always was.
 func (cfg *Config) report(name string, findings []checker.Finding) bool {
-	located := checker.Support(findings)
+	located := quotecheck.Support(findings)
 	for _, f := range findings {
 		if f.Missing() {
 			_, _ = fmt.Fprintf(cfg.Stdout, "%s: MISS %s\n", name, excerpt(f.Passage))
