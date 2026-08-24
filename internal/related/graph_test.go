@@ -1,6 +1,7 @@
 package related_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -59,7 +60,7 @@ func TestLearningPath(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			order, cyclic := related.LearningPath(tc.nodes)
+			order, cyclic, _ := related.LearningPath(tc.nodes)
 			if strings.Join(order, ",") != strings.Join(tc.wantOrder, ",") {
 				t.Errorf("order = %v, want %v", order, tc.wantOrder)
 			}
@@ -94,5 +95,55 @@ func TestMermaidDeterministicAndKnownOnly(t *testing.T) {
 	}
 	if strings.Contains(got, "ghost") {
 		t.Errorf("edge to unknown slug should be omitted:\n%s", got)
+	}
+}
+
+// TestLearningPathReportsAbsentPrerequisites pins the defect the curated-market decision
+// exposed. prereqs keeps only edges to known slugs, so a depends-on target absent from the
+// tree vanished and its skill was emitted as though it had no prerequisite — at the front of
+// the path, apparently ready to learn. Measured over the real market corpus, five skills
+// were in that state.
+func TestLearningPathReportsAbsentPrerequisites(t *testing.T) {
+	t.Parallel()
+	nodes := []related.Node{
+		{Slug: "needs-outside", Edges: []related.Edge{
+			{Kind: related.DependsOn, Target: "not-in-this-tree"},
+		}},
+		{Slug: "needs-nothing"},
+		{Slug: "needs-inside", Edges: []related.Edge{
+			{Kind: related.DependsOn, Target: "needs-nothing"},
+		}},
+		// A qualified target names the tree it means, so it is external by construction
+		// and must not be reported as absent — DanglingEdges already excludes it.
+		{Slug: "needs-other-tree", Edges: []related.Edge{
+			{Kind: related.DependsOn, Target: "merged/all-books-v1/elsewhere"},
+		}},
+		// Only depends-on orders the path, so a non-ordering kind pointing outside is
+		// merely unlisted rather than a missing prerequisite.
+		{Slug: "informs-outside", Edges: []related.Edge{
+			{Kind: related.Informs, Target: "also-not-here"},
+		}},
+	}
+	order, cyclic, unresolved := related.LearningPath(nodes)
+
+	if len(cyclic) != 0 {
+		t.Errorf("cyclic = %v, want none", cyclic)
+	}
+	if want := []string{"needs-outside"}; !slices.Equal(unresolved, want) {
+		t.Errorf("unresolved = %v, want %v", unresolved, want)
+	}
+	// The documented guarantee, and the one a plausible implementation breaks: a skill with
+	// an unresolved prerequisite is still in the path. Reporting it must not remove it.
+	if len(order) != len(nodes) {
+		t.Fatalf("order has %d of %d slugs; reporting must not drop a node", len(order), len(nodes))
+	}
+	seen := map[string]bool{}
+	for _, s := range order {
+		seen[s] = true
+	}
+	for _, n := range nodes {
+		if !seen[n.Slug] {
+			t.Errorf("%s missing from the path", n.Slug)
+		}
 	}
 }

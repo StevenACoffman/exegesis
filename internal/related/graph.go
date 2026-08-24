@@ -31,9 +31,20 @@ type DanglingEdge struct {
 // appended in slug order and returned as cyclic (the caller renders a warning
 // rather than failing). cyclic is empty when the graph is acyclic.
 //
+// unresolved names the slugs with a depends-on target absent from this tree. Those
+// edges cannot order anything, so without this a skill with an external prerequisite
+// is emitted as though it had none -- at the front of the path, apparently ready to
+// learn. A curated tree is deliberately incomplete, so this is expected rather than
+// broken; what it must not be is silent.
+//
+// It says absent, not external, and the distinction is the honest one: a bare slug
+// that resolves nowhere here may name an archived skill or may be a typo, and nothing
+// in this tree can tell them apart. Qualified targets are excluded because they say
+// which tree they mean -- see DanglingEdges.
+//
 // Ensures: order is a permutation of every node slug; for an acyclic graph, no
-// slug precedes one it depends-on.
-func LearningPath(nodes []Node) (order, cyclic []string) {
+// slug precedes one it depends-on; unresolved is sorted and holds only node slugs.
+func LearningPath(nodes []Node) (order, cyclic, unresolved []string) {
 	slugs, known := slugSet(nodes)
 	indegree := make(map[string]int, len(slugs))
 	successors := make(map[string][]string, len(slugs))
@@ -42,7 +53,11 @@ func LearningPath(nodes []Node) (order, cyclic []string) {
 			successors[prereq] = append(successors[prereq], n.Slug)
 			indegree[n.Slug]++
 		}
+		if hasAbsentPrereq(n, known) {
+			unresolved = append(unresolved, n.Slug)
+		}
 	}
+	sort.Strings(unresolved)
 	order = make([]string, 0, len(slugs))
 	emitted := make(map[string]bool, len(slugs))
 	for len(order) < len(slugs) {
@@ -62,7 +77,7 @@ func LearningPath(nodes []Node) (order, cyclic []string) {
 		}
 	}
 	order = append(order, cyclic...)
-	return order, cyclic
+	return order, cyclic, unresolved
 }
 
 // Mermaid renders a `graph TD` of every edge to a known slug, deterministically
@@ -144,6 +159,18 @@ func UnknownSlugs(nodes []Node, want []string) []string {
 }
 
 // prereqs returns the depends-on targets of n that are known slugs.
+// hasAbsentPrereq reports whether n names a depends-on target that is not a slug in
+// this tree and does not name another one. It is the complement of what prereqs keeps:
+// prereqs answers what can order the path, this answers what was dropped doing so.
+func hasAbsentPrereq(n Node, known map[string]bool) bool {
+	for _, e := range n.Edges {
+		if e.Kind == DependsOn && !known[e.Target] && !Qualified(e.Target) {
+			return true
+		}
+	}
+	return false
+}
+
 func prereqs(n Node, known map[string]bool) []string {
 	var out []string
 	for _, e := range n.Edges {
