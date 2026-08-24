@@ -1173,7 +1173,30 @@ against a README.
   (fabrication guard over ingested sources); `textnorm` already has two callers here
   (`quotecheck`, `a2check`) and canonizer is the third. Recorded in skillet's TODO under
   *Contradiction Detection*.
-- [ ] **Hidden-character scanning belongs in `lint`.** `lint` gates frontmatter, body
+- [x] **Hidden-character scanning belongs in `lint`.** DONE 2026-08-23 in
+  `internal/lint/hidden.go`, always on and error severity. **It fires zero times on the
+  corpus, and that is reported rather than glossed:** 0 zero-width, 0 bidi-override, 0 tag
+  characters across 233 skills, inside fences and out. A zero-firing *security* gate is not
+  the vacuous thing a zero-firing score dimension is — this is the ingestion case, the same
+  trigger as the manifest-origin entry above. What justified building it now instead of
+  parking it alongside that one: the predicate is an exact codepoint test needing no design
+  work when the first external skill lands, where the manifest entry needs a lock format.
+  **Verified wired, not merely silent.** "0 findings" and "the check never ran" read
+  identically, so one character was injected into a corpus copy and the diagnostic named the
+  file, class, line and codepoint. Injecting it into the `---` delimiter also showed the
+  check still fires when frontmatter is unparseable — the case that matters most for
+  tampering, since a tampered file is likely to be malformed too.
+  **The confusables half was refused, not deferred.** qvr rates mixed-script words a warning
+  because multilingual prose trips them; that makes it a heuristic, and this entry's own
+  argument for eligibility was *"codepoint ranges from the Unicode standard, not tuned
+  thresholds"*. Excluded rather than demoted: a tier mixing exact and approximate rules
+  teaches readers to distrust both.
+  **Fences are scanned.** A fence does not stop an agent reading what is inside it, and a
+  fenced block is where a payload is easiest to disguise. The expected false positive is a
+  skill documenting one of these characters, and the answer is in the message — write it as
+  `\u200B` — which is both the remedy and what skillet's `textnorm` tests already do. The new
+  test file follows its own advice and uses escapes, which the Go compiler in fact requires:
+  a literal BOM in source is rejected outright. Original entry: `lint` gates frontmatter, body
   links, and runtime neutrality — nothing adversarial. A skill tree that accepts anything
   from outside is accepting text an agent will obey. `qvr/internal/security/unicode.go` is
   the liftable piece: pure rune predicates over zero-width characters (`0x200B`, `0x200C`,
@@ -1189,7 +1212,26 @@ against a README.
   taxonomy (`prompt_injection`, `data_exfiltration`, `memory_poisoning`,
   `mcp_tool_poisoning`, …) is the roadmap, not the first slice.
 - [ ] **A "what did this change orphan?" gate over the related-skill edge graph — and the
-  applicability question it answers.** `link`/`index` own the edge graph but nothing reports
+  applicability question it answers.** **Deferred 2026-08-23, and my sequencing reason for
+  bundling it was wrong.** I had planned it alongside the two curated-tree entries above
+  because all three read the same edge graph. *Same graph is not shared logic*: those two ask
+  whether a named target is present, this one asks which node lost its last **inbound** edge
+  and needs a baseline to compare against. Building it there would have tripled the change
+  for no reused code.
+  **And unbundling it exposed a siting question that should be settled before any code.**
+  The meter's value is `NewlyOrphanedEndpoints` — *regression-relative*, which needs a
+  baseline to be relative to. exegesis has none: verified 2026-08-23, it calls
+  `manifest.Build` **once** and `manifest.Diff` **zero** times. That is the identical
+  objection that sent the prose/test-prompts co-change entry below to `skillsaw preflight`,
+  and it was recorded there as *"exegesis is snapshot-shaped by construction"*. So the
+  question this entry must answer first is not how to build the gate but **whether a
+  regression-relative gate belongs in a snapshot-shaped tool at all** — and if the answer
+  matches the co-change precedent, this belongs in `skillsaw changed`, with only the
+  absolute half (*this skill has no inbound edges at all*) staying here.
+  Note the absolute half is buildable today and is the weaker check the meter deliberately
+  improves on: `BaseAvailable` exists precisely to keep *"no baseline"* distinct from
+  *"zero"*, so shipping the absolute half here without saying so would collapse the
+  distinction the source got right. Unbundled, not stalled — but re-sited before built. `link`/`index` own the edge graph but nothing reports
   a skill that lost its last inbound edge. `coherence`'s `OrphanEndpoints` meter
   (`internal/drift/drift.go:198`) is the shape: `NewlyOrphanedEndpoints` **and**
   `NewlyCoveredEndpoints` (both directions, so the gate is regression-relative rather than
@@ -1339,7 +1381,60 @@ an earlier README-level pass did not survive and are retracted below.
   Nothing to schedule here yet — exegesis still has no `verified` frontmatter and no
   second-consumer claim on the fold. What changed is that this entry can stop describing
   the knowledge base as hypothetical.
-- [ ] **"Every instruction the agent reads must be backed by a working command."** That is
+- [x] **"Every instruction the agent reads must be backed by a working command."**
+  **CLOSED 2026-08-24 by measurement: do not build it here.** The decision rule was written
+  down before the numbers existed, because with counts in hand almost any outcome can be
+  rationalised — and the README bar this repo just adopted (*a contract clause or a
+  measurement*) is worthless if the measurement is read after the conclusion is chosen. Two
+  pre-registered rows fired.
+
+  **Extraction, over all 233 skills:** 62 skills (27%) name at least one command; 99 distinct
+  command tokens; 697 occurrences inside shell-tagged fences against 480 in inline code spans.
+
+  **Row 3 fired: the only exegesis-checkable class is empty.** Commands were placed in four
+  classes — universal (15 tokens), project-local (6), third-party (78), and **self-referential
+  (0)**. Self-referential — a path inside the skill's own directory — is the one class a tool
+  that sees only a skill tree can resolve deterministically, and nothing in the corpus is in
+  it. A first pass reported 26, all of which were `methodology/*.md`, `references/*.md` and
+  `templates/*.md`: **documentation links, not commands**, and already covered by `lint`'s
+  body-link validation. The pre-registered rule for a slice under 5 was *do not build, close
+  with the count*.
+
+  **Row 5 fired: `$PATH` resolution is a fact about one machine.** Of 78 third-party tokens,
+  27 resolve with the full `$PATH` and 7 with `PATH=/usr/bin:/bin` — so **26% of verdicts
+  change with the machine**. That row was not conditional on the number: it is the invigilator
+  no-default-roots decision one repository over, and a check whose verdict changes with the
+  laptop is the same defect as a hold whose verdict changes with the root list. The number is
+  recorded so the refusal survives the next person who proposes the check.
+
+  **The finding worth more than either row: a resolution check fires hardest on the skills
+  that are most correct.** The hand audit found `mycmd install`, `myapp serve`, `mycli
+  --token-stdin`, `deploy --reset`, `app destroy`, `db wipe` — **deliberate placeholders** in
+  `cli-interface-stability`, `cli-destructive-confirmation-tiers` and `climax-cli-scaffold`.
+  A skill teaching CLI design *should* name fictional commands rather than borrow a real
+  tool's name. This is the fourth instance of the family's recurring shape — after dim 9, the
+  description/heading predicate, and the RIA-segment rule — where the mechanical form of good
+  advice penalises the behaviour the advice wants.
+
+  **The entry's own analogy was the flaw.** `agentic-harness-bootstrap` checks
+  `ARCHITECTURE.md` against **its own repository**: document and subject are one artifact, so
+  the claim is local. A skill saying `make verify` claims something about **the repository the
+  skill will later be used in**, which exegesis never sees. That is not environment-dependence
+  to be softened with a warning tier — it is a category error, and the warning tier the entry
+  proposed would have hidden it.
+
+  **The extractor could not be made trustworthy either**, which is a finding about the whole
+  idea rather than about one afternoon's regex. The first pass ranked `defer`, `func`, `nil`,
+  `var` and `main.go` among the top command tokens — the `okf-fold` failure exactly, a pattern
+  that cannot tell vocabulary from use. Tightening it (require an invocation shape, reject
+  language keywords, file extensions, formulas and output text) cut distinct tokens **1514 to
+  99**, and the residue still holds SQL column names (`avg_order_value`, `user_id`) and
+  subcommand fragments (`add`, `diagnose`, `judge`). Only 27 of 78 third-party tokens resolve
+  even on the machine that authored the corpus.
+
+  **If any repo should own this, it is one that sees a repository** — `agentic-dev-harness`
+  drives changes through an actual checkout — not a gate over a tree of documents. Not
+  proposed there; recorded here so the idea arrives with its measurement. Original entry: That is
   Principle 1 of `agent-blue/agentic-harness-bootstrap`, and its
   `templates/verify-harness.sh.tmpl` enforces it by *parsing the document's own module table
   out of `ARCHITECTURE.md` and checking each path exists* — the doc's claims about the repo
@@ -1361,8 +1456,32 @@ an earlier README-level pass did not survive and are retracted below.
 Source: a survey of `~/Documents/agent-fuschia` (26 repositories). Two items reach the
 structural gate; the rest of that survey lands on gnosis and canonizer.
 
-- [ ] **Tree closure — `verify` proves every skill is well-formed, not that every file is
-  accounted for.** `manifest` records the skills found; nothing fails a tree containing a
+- [x] **Tree closure — `verify` proves every skill is well-formed, not that every file is
+  accounted for.** DONE 2026-08-23 **for the half that needs no config**, and the split was
+  found by measuring rather than reasoning. It is two findings:
+
+  | shape                                       | count in the corpus                        | needs an allowlist |
+  | ------------------------------------------- | ------------------------------------------ | ------------------ |
+  | directory under the tree with no `SKILL.md` | **1** (`unconventional-commits-workspace`) | no                 |
+  | extra files inside a skill directory        | **130+** across 7 shapes                   | yes                |
+
+  Built the first: `checkClosure` reports it, warning tier, and the tree still verifies —
+  same verdict discipline as the graph notes, since a tree holding a working directory is not
+  broken. It fires exactly once on the real corpus, on exactly the predicted name.
+  **Nothing caught it before:** `verifySkills` skips a directory with no `SKILL.md`, and
+  `checkCatalog` returns `nil` unless a registry supplies `expected_skills` — so a lost skill
+  verified clean.
+  **Deferred the second, with the count that is the reason:** `test-results.md` ×108,
+  `methodology` ×15, `templates`/`references` ×6, `.rumdl_cache` ×5, `agents`/`extractors`
+  ×5, `TODO.md` ×3, `merge-audit.md` ×4. Reporting these without config buries the one real
+  finding under a hundred lines, and the legitimate set is repo-specific — which is this
+  entry's own scoping note, now with a number attached.
+  **Shape note worth keeping:** the unlisted set is derived by **subtracting what
+  `skill.Discover` returned**, not by asking each directory whether it holds a `SKILL.md`.
+  Re-asking would put the rule that *defines* a skill directory in two modules, and the drift
+  would be silent — skillet could widen what counts while exegesis kept reporting the old
+  complement. Safe over one level because `fsutil.SubdirsContaining` tests immediate children
+  and does not recurse. Original entry: `manifest` records the skills found; nothing fails a tree containing a
   file that belongs to no skill. `agent-fuschia/vac-protocol` names this exact failure
   `unlisted-file` and treats bundle closure as a structural property alongside
   hash-identity (§4), and `qvr sync` enforces the same invariant from the other end —
@@ -1373,7 +1492,20 @@ structural gate; the rest of that survey lands on gnosis and canonizer.
   unaccounted files under a verified tree, warning tier, `--strict` to fail — because the
   set of legitimately-unlisted files (editor droppings, `references/`, `scripts/`) is
   repo-specific and belongs in config rather than in the check.
-- [ ] **Say which act the gate performed.** `vac-protocol` §4 insists structural
+- [x] **Say which act the gate performed.** DONE 2026-08-23 for the human half; **the
+  manifest field was refused on its merits, not just deferred at the release boundary.**
+  Every run now ends with *"structural gates only; semantic replay not performed (a pass
+  means this tree is well-formed, not that any skill in it is good)"* — once per run, on every
+  `--gates` path, and on failing runs too, since a reader looking at a failure also needs to
+  know the failure is structural. It states only the negative: the acts that ran already
+  print their own lines, so naming them again would say what the output shows.
+  **On `semantic_verification: "not-performed"`:** `manifest.Manifest` is skillet's, so the
+  field is a skillet change plus a release. It should not be taken even then as written,
+  because for exegesis the value is a **constant** — exegesis never performs semantic replay,
+  by charter — and a field with one reachable value is skillet's own recorded cautionary case,
+  `provenance`, *"carried tested with zero importers until v0.20.0 deleted it"*. It needs a
+  tool that would set it to *performed*. Filed in `skillet/TODO.md` as needing a second
+  consumer. Original entry: `vac-protocol` §4 insists structural
   verification and semantic replay are "two distinct acts, never to be conflated", and that
   the structural verifier "never performs [replay] and says so in its output" — because
   **"a structural PASS means the bundle is *internally honest*, not that the issuer's
@@ -1402,6 +1534,21 @@ and the first is the best one because it converts a behavioural finding into a m
 check.
 
 - [ ] **A `description` that summarises the workflow is a defect, and it is checkable.**
+  **MEASURED 2026-08-23: the mechanical slice this entry proposes flags the good case, and
+  must not be built as specified.** The entry's safest-looking move was *"a description
+  containing a section title from its own body is a summary of that section, and that is a
+  string comparison, not a heuristic"*. Run over 233 skills with `skill.Load`: **13 hits**,
+  and their shape refutes the predicate. `zero-touch-production` is flagged for containing
+  **"Do Not Use This Skill When"** — a negative trigger condition, exactly what the guidance
+  asks a description to carry. The rest are topic enumerations (`gqlgen-app`: "Project Setup,
+  Resolver Patterns, Error Handling, Custom Directives, Client Helper, Apollo Federation"),
+  which read as triggering context rather than as process.
+  **The predicate detects shared vocabulary; the defect is restated procedure.** Those are
+  different things, and the gap is not closable by tightening a threshold. This is the dim-9
+  pattern a third time: a mechanical form of good advice that penalises the behaviour the
+  advice wants. The measured cases are now the worked example in the README's
+  contract-versus-prose note, so the next person reaching for this rule meets the evidence
+  before the idea. **Still open as a question, closed as a string comparison.** Original entry:
   `checkRedlines` #5 already tests that a description *states a trigger condition*
   (heuristic). `superpowers` supplies the complementary rule and, unusually, the
   measurement behind it:
@@ -1428,7 +1575,16 @@ check.
   Land it as an opt-in `--check` tier beside `redlines`, not in `speclint`. `speclint`
   holds the agentskills.io contract, and the spec does not say this; see the next item.
 
-- [ ] **Draw the line between the contract and the vendor's prose advice, in writing.**
+- [x] **Draw the line between the contract and the vendor's prose advice, in writing.**
+  DONE 2026-08-23: *"`speclint` Is the Spec, Not the Style Guide"* in `README.md`, with a
+  pointer from `internal/lint`'s package doc rather than a second copy of the reasoning
+  (§13: one authoritative location, referenced from the affected code).
+  **It ships with two measurements rather than only `superpowers`' authority**, which is what
+  makes it a rule and not a preference: the description/heading predicate flags
+  `zero-touch-production` for a negative trigger condition the guidance itself asks for, and
+  the RIA-TV++ segment rule reports six defects against a hand-written skill about a format
+  it never claimed. The stated bar is therefore **a contract clause or a measurement**;
+  guidance alone is a reason to read carefully, not to gate. Original entry:
   `speclint` gates `agentskills.io` frontmatter — required keys, the allowlist, the
   1024-character cap — and that is a machine-readable contract exegesis is right to
   enforce. Anthropic also publishes *authoring guidance*, which is prose, and the two
@@ -1446,8 +1602,27 @@ check.
   next person to extend the lint will reach for the same document, and half of it is
   not a specification. Matching entries in `skillet` and `skillsaw`.
 
-- [ ] **`verify` cannot tell an external reference from a broken one, and the curated-market
-      decision makes that distinction load-bearing.** Both read the same today: an
+- [x] **`verify` cannot tell an external reference from a broken one, and the curated-market
+      decision makes that distinction load-bearing.** DONE 2026-08-23, and **the entry's
+      premise was wrong in a way worth keeping.** Externality is not decidable here.
+      `DanglingEdges` already skips `Qualified` targets, so a `merged/all-books-v1/…` target
+      is *never* reported; every edge it does report is **unqualified**, and being unqualified
+      is exactly what makes it unresolvable. Whether a bare `four-golden-signals-monitoring`
+      names an archived skill or is a typo cannot be told apart by anything in the tree.
+      So the shape this entry proposed — incomplete when the target resolves elsewhere, an
+      error when it resolves nowhere — **has no second class to sort into.** What is
+      achievable is the weaker and honest claim: **absent from this tree.**
+      The change was therefore to the **verdict, not the classification**. Graph
+      incompleteness is now reported and no longer feeds `verified`, so a curated tree does
+      not read as broken; the note says *"not in this tree, so INDEX.md cannot order on it
+      (expected in a curated tree; verify does not fail on it)"*.
+      **Typo-catching moved rather than vanished.** It belongs at write time, where the
+      author is present and `UnknownSlugs` already answers it — not at verify time, where
+      blocking on it would only make every curated tree permanently unverified.
+      Checked against the real market corpus: **56 graph notes**, and the tree still fails —
+      for missing `test-prompts.json` and disallowed frontmatter keys. That mattered to check,
+      because a change that relaxes a gate can quietly turn a failing tree green.
+      Original entry: Both read the same today: an
       unqualified target absent from this tree, and a `merged/all-books-v1/…` target in
       another one. Since the market is now a curated end product whose dangling edges are
       *expected* — provenance, not defects — a gate that reports them identically either
@@ -1464,8 +1639,25 @@ check.
       pick a verdict and one to order a learning path. Classifying it twice in two files is
       how `softening` acquired two spellings.
 
-- [ ] **A fully populated tree over just the curated set needs its own index or field.**
-      Follows from the same decision. `index` builds a learning path over `depends-on` edges,
+- [x] **A fully populated tree over just the curated set needs its own index or field.**
+      DONE 2026-08-23. `LearningPath` returns a third value, `unresolved`, and `index` renders
+      *"depends on a skill absent from this tree"* under the path. `order` stays a permutation
+      of every slug — asserted, because the plausible wrong implementation is to filter the
+      unresolved nodes out of the ordering.
+      **The measured count in this entry was wrong: 16 skills, not 5.** The cause is worth
+      more than the correction. I measured with a hand-written regex that matched only the
+      canonical `- kind: \`target\`` bullet, while `ParseSection` reads **six dialects** — so
+      `- **depends-on** → \`slo-definition-calibration-framework\`: …` in `multi-tier-slo` and
+      `sli-compass` was invisible to my probe and plain to the tool. **5 was a lower bound
+      produced by re-implementing a reader that already existed**, which is the exact failure
+      the dialect work exists to prevent, committed one file away from it.
+      **Wording: "absent from", not "outside".** The first draft said *outside this tree*,
+      which asserts the externality the entry above establishes is undecidable. Absence is
+      what is observed; provenance-versus-typo is left to the reader.
+      **Scope check discharged:** only `depends-on` is flagged. `informs` and qualified
+      cross-tree targets are asserted **not** to appear, so the report did not widen past
+      what affects ordering.
+      Original entry: Follows from the same decision. `index` builds a learning path over `depends-on` edges,
       and in a curated tree some of those point outside it — so the path is either
       silently truncated or silently includes unreachable nodes. Neither is stated today.
       **DECIDED 2026-08-23: one index, mark the edge external, and say so in the path.**
@@ -1505,6 +1697,19 @@ check.
       entry below, which is about copies of one tree rather than about a subset of one.
 
 - [ ] **`index` / `merge-index` should have an opinion about one tree, many manifests.**
+  **RE-SCOPED 2026-08-23: the duplicate-slug check is vacuous *by construction*, and belongs
+  to `merge-index` rather than `index`.** `cmd/verify/verify.go` sets
+  `slug: filepath.Base(dir)` — a slug **is** a directory basename, and one directory cannot
+  hold two entries with the same basename. "Same slug, more than one directory" therefore
+  **cannot fire inside one tree**: not a check that finds nothing today, a check that can
+  never find anything. (0 duplicate frontmatter `name:` values across 233 skills is the
+  weaker corroboration; the structural argument is decisive.) It would also be a second
+  diagnostic for a condition `name != folder` already reports.
+  **What survives is the cross-tree half**, which is the duplication the entry is actually
+  about — `.claude/skills` beside `.agents/skills` beside `.cursor/skills`. That needs many
+  trees as input, so it is `merge-index`'s, and `skillet/identity.Hash` still answers whether
+  the copies diverged. I had ranked this as the cheap one; it was cheap because it was empty.
+  Original entry:
   `superpowers` supports nine harnesses — Claude Code, Codex, Cursor, Devin, Gemini,
   Copilot, Grok, Kimi, OpenCode, Pi, Hermes, Antigravity — from **fourteen `SKILL.md`
   files in a single `skills/` directory**. Each `.<harness>-plugin/plugin.json` carries
@@ -1540,7 +1745,16 @@ report for the kernel; it is recorded once rather than seven times.
 
 One idea is real, is not in any backlog in this family, and is exegesis's:
 
-- [ ] **Nothing checks that a skill's prose and its `test-prompts.json` changed together.**
+- [x] **Nothing checks that a skill's prose and its `test-prompts.json` changed together.**
+  CLOSED 2026-08-23 — **resolved by relocation, not by building it here.** The finding was
+  real and neither half of the fix is exegesis's: the missing datum went to
+  `skillet/manifest` (`Skill.TestPrompts` records a path, not a hash, so no delta can see the
+  prompts change) and the gate went to `skillsaw preflight`, because answering *did these
+  change together* needs a baseline and exegesis holds none. Kept open as a box after that
+  was settled, which overstated the backlog by one and is the exact confusion invigilator's
+  TODO warns about — a decision recorded as an unchecked box reads as work. What stays
+  exegesis's is stated in the entry and unchanged: `tests` validates that a
+  `test-prompts.json` is well-formed, composed, and migratable. Original entry:
   A `SKILL.md` can be rewritten while its test prompts stay as they were, and every gate
   passes: `lint` sees well-formed frontmatter, `verify` sees a well-formed tree, `tests`
   sees a well-formed prompts file, and `skillsaw` scores a skill whose behavioural
