@@ -6,8 +6,14 @@
 // Two families of rule live in skillet so exegesis and skillsaw share one source of
 // truth rather than drifting: the agentskills.io frontmatter rules (speclint) and
 // the Quality Red Lines (redlines). The checks below are the ones that remain
-// exegesis-specific: folder match, body links, runtime neutrality, and the opt-in
-// registry budgets.
+// exegesis-specific: folder match, body links, runtime neutrality, hidden
+// characters, and the opt-in registry budgets.
+//
+// Before adding a rule here, read "speclint Is the Spec, Not the Style Guide" in the
+// README: speclint carries the agentskills.io contract, the same vendor also publishes
+// authoring prose that is not part of it, and a rule drawn from the prose alone needs a
+// measurement before it gates. The README holds the reasoning and the two cases where
+// the measurement refused a rule, so it is not restated here.
 package lint
 
 import (
@@ -77,6 +83,14 @@ func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
 	ds = append(ds, checkBudget(s, opts)...)
 	for _, h := range neutrality.Scan([]neutrality.NamedFile{{Name: "SKILL.md", Content: s.Raw}}) {
 		ds = append(ds, diagf("runtime-bound wording at SKILL.md:%d: %q", h.Line, h.Text))
+	}
+	// Not opt-in, unlike the tiers below. An invisible character is a tampering
+	// vector rather than a matter of quality, and a security check behind a flag is
+	// off in exactly the run that needed it. Affordable as a hard gate only because
+	// the predicate is an exact codepoint test — see hidden.go on why the confusable
+	// heuristic is excluded rather than demoted to a warning.
+	for _, h := range scanHidden(s.Raw) {
+		ds = append(ds, diag(h.message()))
 	}
 	if opts.Redlines {
 		ds = append(ds, redlines.Check(s)...)
