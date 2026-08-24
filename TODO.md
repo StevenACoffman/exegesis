@@ -1430,15 +1430,50 @@ check.
       **The count that motivates it** (2026-08-23): 7 distinct dangling targets across 13
       references in the market corpus, of which the two previously filed as bugs were among
       the smallest.
+      **Build this with the curated-index entry below**, decided 2026-08-23. Both need the
+      same classification — does this target resolve outside the tree, or nowhere — one to
+      pick a verdict and one to order a learning path. Classifying it twice in two files is
+      how `softening` acquired two spellings.
 
 - [ ] **A fully populated tree over just the curated set needs its own index or field.**
       Follows from the same decision. `index` builds a learning path over `depends-on` edges,
       and in a curated tree some of those point outside it — so the path is either
       silently truncated or silently includes unreachable nodes. Neither is stated today.
-      Options, unranked and undecided: a separate index file for the curated subset; a field
-      on the existing index marking an edge external; or a manifest that records which
-      targets are out of tree. Related to the one-tree-many-manifests entry below, which is
-      about copies of one tree rather than about a subset of one.
+      **DECIDED 2026-08-23: one index, mark the edge external, and say so in the path.**
+      **The entry's description of the defect was wrong, and the code is more specific.**
+      `related.prereqs` filters on `known[e.Target]`, so an external edge is *dropped* and
+      the node keeps its place — the path is neither truncated nor padded with unreachable
+      nodes. What actually happens is worse: **a skill with an external prerequisite is
+      presented as having none**, so it sits at the front of the learning path as though
+      ready to learn. A confident wrong ordering rather than a visible gap.
+      **Measured: 5 skills, 3 targets.** `change-as-primary-outage-cause` and
+      `hypothetico-deductive-troubleshooting-loop` both need `four-golden-signals-monitoring`;
+      `embedding-sre-ops-overload-recovery` and `toil-six-property-identification-test` both
+      need `sli-slo-sla-tier-framework`; `fcis-shell-exploration-cadence` needs
+      `seam-to-zone-refactoring-trajectory`.
+      **Rejected: a separate index for the curated subset.** Two indexes over one tree is a
+      second source of truth about which edges exist, which is the objection already recorded
+      against `skillex`'s SQLite index — and it would relocate the silent drop rather than
+      fix it.
+      **Rejected: recording it only in a manifest.** That puts the fact furthest from where
+      it misleads. The wrong claim is in the learning path, and a reader of the path will not
+      consult the manifest. It also overlaps the manifest-origin entry, which is
+      trigger-parked.
+      **Rejected: reordering the path** to put externally-blocked skills last. Five skills is
+      small enough to report accurately, and a skill with one external prerequisite is not
+      unlearnable — the reader may have that context. *"This needs something outside the
+      tree"* is information; *"I moved it to the end"* is a policy nobody asked for.
+      **Build it with the `verify` external-versus-broken entry above, not separately.** Both
+      are the same classification — external or absent — one feeding a verdict and the other
+      an ordering. Splitting them means classifying the same edge twice in two files, which
+      is how `softening` acquired two spellings.
+      **Scope check still owed:** only `depends-on` was measured, since only it affects
+      ordering. Confirm `informs` and `composes-with` targets outside the tree are merely
+      unlisted rather than mis-rendered before building.
+      Original framing: Options, unranked and undecided: a separate index file for the
+      curated subset; a field on the existing index marking an edge external; or a manifest
+      that records which targets are out of tree. Related to the one-tree-many-manifests
+      entry below, which is about copies of one tree rather than about a subset of one.
 
 - [ ] **`index` / `merge-index` should have an opinion about one tree, many manifests.**
   `superpowers` supports nine harnesses — Claude Code, Codex, Cursor, Devin, Gemini,
