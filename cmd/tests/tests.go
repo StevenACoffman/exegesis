@@ -4,7 +4,6 @@ package tests
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -178,12 +177,12 @@ func (cfg *Config) migrate(dirs []string) error {
 		if err != nil {
 			return fmt.Errorf("tests: read %s: %w", path, err)
 		}
-		if err := refuseIfCasesWouldBeLost(path, raw); err != nil {
-			return err
-		}
 		f, err := testprompts.Parse(raw)
 		if err != nil {
 			return fmt.Errorf("tests: parse %s: %w", path, err)
+		}
+		if err := refuseIfCasesWouldBeLost(path, f); err != nil {
+			return err
 		}
 		if len(f.Rewrites) == 0 {
 			_, _ = fmt.Fprintf(cfg.Stdout, "%s: already canonical\n", path)
@@ -205,22 +204,23 @@ func (cfg *Config) migrate(dirs []string) error {
 // The reader keeps "tests" and drops the rest, so migrating such a file writes back only
 // half of it and deletes cases the author can still see on disk. That is the one rewrite
 // which destroys work rather than reshaping it, so it is refused rather than reported.
-// The two keys are re-read here rather than matched out of File.Rewrites: pattern-matching
-// a human-readable string to decide whether to destroy data would break the first time
-// that wording changed.
-func refuseIfCasesWouldBeLost(path string, raw []byte) error {
-	var both struct {
-		Tests     []json.RawMessage `json:"tests"`
-		TestCases []json.RawMessage `json:"test_cases"`
+//
+// It asks File.DroppedCases rather than re-reading the raw JSON or matching out of
+// File.Rewrites. Reading the sentence would break the first time its wording changed;
+// re-reading the bytes worked, but put the judgement *which shapes destroy work* in two
+// modules, so a future shape that also dropped cases would be recorded by Parse and
+// silently not refused here.
+//
+// The kept count is len(f.Tests) rather than a second raw read: normalize appends exactly
+// one case per input and never drops, so the normalized count is the count the file
+// declared under "tests".
+func refuseIfCasesWouldBeLost(path string, f *testprompts.File) error {
+	dropped := f.DroppedCases()
+	if dropped == 0 {
+		return nil
 	}
-	// A decode failure needs no handling here: it leaves both fields empty, so there is
-	// no pair of keys to weigh, and Parse reports the real problem a moment later.
-	_ = json.Unmarshal(raw, &both)
-	if len(both.Tests) > 0 && len(both.TestCases) > 0 {
-		return fmt.Errorf(
-			`tests: %s has both "tests" (%d cases) and "test_cases" (%d cases); `+
-				`migrating would keep only "tests" and delete the rest -- merge them by hand first`,
-			path, len(both.Tests), len(both.TestCases))
-	}
-	return nil
+	return fmt.Errorf(
+		`tests: %s has both "tests" (%d cases) and "test_cases" (%d cases); `+
+			`migrating would keep only "tests" and delete the rest -- merge them by hand first`,
+		path, len(f.Tests), dropped)
 }

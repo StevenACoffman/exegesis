@@ -220,3 +220,50 @@ func TestTestsScaffoldAndMigrateAreRefusedTogether(t *testing.T) {
 		t.Errorf("expected a UsageError for a bad flag combination, got %T", err)
 	}
 }
+
+// TestTestsMigrateRefusalKeepsBothCounts pins the numbers, not just the refusal. The counts
+// are what make it actionable — an author needs to know how much is on each side before
+// merging by hand — and they are the thing most easily lost when the detector behind them
+// changes. The kept count now comes from len(f.Tests) rather than a second raw read, which
+// is only correct because normalize appends one case per input and never drops.
+func TestTestsMigrateRefusalKeepsBothCounts(t *testing.T) {
+	t.Parallel()
+	// Deliberately lopsided: 1 kept against 3 dropped, so a transposition or a reused
+	// variable shows up rather than reading plausibly.
+	body := `{"tests":[{"id":1,"type":"should_trigger","prompt":"p","expected":"e"}],` +
+		`"test_cases":[` +
+		`{"id":2,"type":"edge_case","prompt":"q","expected":"f"},` +
+		`{"id":3,"type":"edge_case","prompt":"r","expected":"g"},` +
+		`{"id":4,"type":"edge_case","prompt":"s","expected":"h"}]}`
+	_, err := run(t, "tests", "--migrate", writeTP(t, body))
+	if err == nil {
+		t.Fatal("migrate destroyed cases instead of refusing")
+	}
+	for _, want := range []string{`"tests" (1 cases)`, `"test_cases" (3 cases)`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal is missing %s; got: %v", want, err)
+		}
+	}
+}
+
+// TestTestsMigrateMalformedStillReportsTheParseError pins that moving the refusal after
+// Parse changed nothing. It used to run first, on the raw bytes; the predicate it now asks
+// only exists on a parsed file. A decode failure could never trip the old check either — it
+// left both fields empty — so a malformed file has always surfaced its parse error, and must
+// still.
+func TestTestsMigrateMalformedStillReportsTheParseError(t *testing.T) {
+	t.Parallel()
+	// Both keys present and the document truncated, so the old order and the new one are
+	// distinguishable if the reordering mattered.
+	dir := writeTP(t, `{"tests":[{"id":1,"prompt":"p"}],"test_cases":[{"id":2,`)
+	_, err := run(t, "tests", "--migrate", dir)
+	if err == nil {
+		t.Fatal("a malformed file was accepted")
+	}
+	if strings.Contains(err.Error(), "merge them by hand") {
+		t.Errorf("reported the refusal for an unparseable file: %v", err)
+	}
+	if !strings.Contains(err.Error(), "parse") {
+		t.Errorf("expected a parse error, got: %v", err)
+	}
+}
