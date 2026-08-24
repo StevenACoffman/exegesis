@@ -1596,7 +1596,21 @@ than the market, and not worth a file of its own before then.
 seven that destroys work rather than reshaping it. The decision record is in
 `skillet/TODO.md`; this entry is what changes here.
 
-- [ ] **Replace the raw-JSON re-read in `cmd/tests` with the predicate.**
+- [x] **Replace the raw-JSON re-read in `cmd/tests` with the predicate.** DONE 2026-08-23 on
+      skillet v0.21.0. `refuseIfCasesWouldBeLost` takes a `*testprompts.File` and asks
+      `DroppedCases()`; the throwaway `{Tests, TestCases []json.RawMessage}` and the
+      `encoding/json` import are gone.
+      The counts survive, which the entry required: the dropped count is the predicate, and
+      the kept count is `len(f.Tests)` — safe rather than lucky, because `normalize` appends
+      one case per input and never drops, so the normalized count is what the file declared.
+      Checked in skillet's source rather than assumed.
+      **The refusal moved after `Parse`, and that is inert.** It used to run on raw bytes;
+      the predicate only exists on a parsed file. A decode failure could never trip the old
+      check either — it left both fields empty — so a malformed file has always surfaced its
+      parse error. Pinned by a test with both keys present and the document truncated.
+      The count assertion was mutation-checked by transposing the two numbers, which the
+      lopsided 1-versus-3 fixture catches; a symmetric fixture would have passed.
+      Original entry:
       `refuseIfCasesWouldBeLost` unmarshals the file a second time into a throwaway
       `{Tests, TestCases []json.RawMessage}` to detect both keys being populated. Its
       comment is right about why it does not pattern-match `File.Rewrites` — *"pattern-
