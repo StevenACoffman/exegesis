@@ -1255,7 +1255,36 @@ an earlier README-level pass did not survive and are retracted below.
   adopt. **Worth propagating instead: canonizer has no equivalent** — it parses rulesets and
   never calls `ruleset.Render`, so a stored ruleset can be parseable yet non-canonical.
   Filed in that repo.
-- [ ] **OKF as the frontmatter contract `lint` gates, if the knowledge base adopts it.**
+- [x] **OKF as the frontmatter contract `lint` gates.** CLOSED 2026-08-23: **no.** The
+  trigger fired and the answer it produced is negative.
+  **The trigger fired.** This entry said *"not scheduled: this waits on the knowledge-base
+  decision"*, and gnosis exists and has adopted OKF — `internal/okflog` and
+  `internal/lint/stale.go` are shipped. Nothing was watching, so the entry sat on a
+  satisfied precondition; there was no hold on it.
+  **It adopted OKF for *concepts*, which is a different artifact under a different published
+  spec.** A `SKILL.md` answers to agentskills.io; a concept document answers to OKF. Gating
+  one on the other's fields is the category error this family keeps catching.
+  **And the fields have no legal home.** `speclint`'s allowed top-level set is `name`,
+  `description`, `license`, `compatibility`, `metadata`, `allowed-tools`, and any other
+  top-level key is an **error**. So a skill carrying `verified:` is already a spec violation,
+  and exegesis demanding it would contradict `speclint` inside one `lint` run — not a
+  trade-off, a contradiction.
+  **Nested under `metadata` it would be legal and still wrong today**, because zero of 233
+  skills carry any OKF field: the rule could only fail everything or never fire. That is the
+  `provenance`-with-zero-importers shape.
+  **Two things kept, because the mechanism transfers even though the fields do not:**
+  - If skills ever carry trust metadata, **`metadata` is the only legal home** — the spec
+    reserves it for client-specific properties, which is the same conclusion merge-skills
+    reached for `superseded-by`.
+  - §5.3's tiers are a fold over an actor prefix and §5.5's `stale_after` is an absolute
+    date, so both are genuinely `speclint`-shaped. But **§11 forbids rejecting a concept for
+    a missing optional family**, so any such gate reports rather than fails — the same *flag
+    on the inputs* pattern skillsaw settled, arriving independently from a published spec.
+  **Deliberately not taken: adopting `stale_after` alone.** It is the one field gnosis
+  shipped and it sounds minimal, but on skills nothing writes it and nothing reads it, so the
+  rule can only be vacuous or wrong.
+  The trust-fold evaluation lives in `../../git/skillet/TODO.md` with a live trigger, and the
+  vocabulary canonizer wanted for its `anchor-absent` split is recorded there. Original entry:
   `agent-blue/knowledge-catalog/okf/SPEC.md` (Open Knowledge Format v0.2, Apache-2.0) is a
   published spec for exactly the corpus shape we already store — a directory of markdown
   with YAML frontmatter, no schema registry, no required tooling. Its §5 fields are the ones
