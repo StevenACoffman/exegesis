@@ -78,6 +78,36 @@ and skillsaw cannot drift on a rule they both enforce: `speclint` owns the agent
 frontmatter spec, `redlines` owns book2skill's Quality Red Lines, and `testprompts` owns the
 shared `test-prompts.json` contract.
 
+### `speclint` Is the Spec, Not the Style Guide
+
+`speclint` gates what `agentskills.io` specifies: the required keys, the key allowlist, the
+1024-character description cap. That is a machine-readable contract, and enforcing it is
+exegesis's job. Anthropic also publishes *authoring guidance* — how to word a description,
+how to structure a body — which arrives from the same source, reads with the same authority,
+and **is not part of the contract.** exegesis does not enforce it, and a rule proposed on the
+strength of that guidance alone does not belong in `speclint`.
+
+The reason is evidence, not preference. `superpowers` draws the same line and says why: its
+own head-to-head wording tests contradict parts of the published advice, so it accepts the
+contract from that document and refuses the prose, declining changes made to "comply" with it
+absent eval evidence that outcomes improve. This repository has since measured the same thing
+twice — a mechanical form of "a description must not summarise the workflow" flags
+`zero-touch-production` for containing *"Do Not Use This Skill When"*, a negative trigger
+condition the guidance itself asks for; and the RIA-TV++ segment rule, applied to a
+hand-written skill, reports six defects about a format the document never claimed.
+
+So: a new rule needs a contract clause or a measurement. Guidance is a reason to read
+carefully, not a reason to gate.
+
+The two cases above are instances of a shape measured four times across this family, recorded
+once in `skillet/TODO.md` under *Mechanical Forms of Good Advice*: the mechanical proxy for a
+correct piece of advice selects on a surface feature that the **good** case exhibits at least
+as strongly as the bad one, so no threshold separates them. The practical rule from that
+record is worth repeating here, because it is what turns this section from opinion into
+process — before building a mechanical form of any advice, run the predicate over the corpus
+and **read what it flags, not how many**. "It is a string comparison, not a heuristic" is not
+evidence of safety; two of the four were exact and deterministic.
+
 ## The Family
 
 | Repo                                                                           | Role                                                      |

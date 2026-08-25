@@ -23,7 +23,7 @@ type Header struct {
 // comments, followed by preserved — the caller's hand-added tail. Nodes are
 // listed in slug order; the whole output is deterministic.
 func Render(h Header, nodes []Node, preserved string) string {
-	order, cyclic := LearningPath(nodes)
+	order, cyclic, unresolved := LearningPath(nodes)
 	var b strings.Builder
 	b.WriteString(startMarker + "\n")
 	fmt.Fprintf(&b, "# %s\n", title(h))
@@ -35,7 +35,7 @@ func Render(h Header, nodes []Node, preserved string) string {
 	b.WriteString("\n## Relationship graph\n\n```mermaid\n")
 	b.WriteString(Mermaid(nodes))
 	b.WriteString("```\n\n## Learning path\n\n")
-	b.WriteString(learningList(order, cyclic))
+	b.WriteString(learningList(order, cyclic, unresolved))
 	b.WriteString(endMarker + "\n")
 	if preserved != "" {
 		b.WriteString("\n" + preserved)
@@ -86,10 +86,18 @@ func skillList(nodes []Node) string {
 
 // learningList renders the ordered learning path, with a warning note when the
 // depends-on graph has a cycle.
-func learningList(order, cyclic []string) string {
+func learningList(order, cyclic, unresolved []string) string {
 	var b strings.Builder
 	if len(cyclic) > 0 {
 		fmt.Fprintf(&b, "> ⚠️ depends-on cycle among: %s\n\n", strings.Join(cyclic, ", "))
+	}
+	// Stated because the path cannot show it: these skills depend on something absent
+	// from this tree, so the ordering below places them as though they had no
+	// prerequisite. A curated tree is deliberately incomplete; the note is what keeps
+	// that from reading as "ready to learn".
+	if len(unresolved) > 0 {
+		fmt.Fprintf(&b, "> ℹ️ depends on a skill absent from this tree: %s\n\n",
+			strings.Join(unresolved, ", "))
 	}
 	for i, slug := range order {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, slug)

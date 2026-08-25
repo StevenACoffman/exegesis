@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/peterbourgon/ff/v4"
@@ -155,10 +156,30 @@ func (cfg *Config) run(tree string, gates gateSet) (bool, error) {
 		}
 		overviewPass = len(problems) == 0
 	}
-	if !gates.runSkills() {
-		return overviewPass, nil
+	pass := overviewPass
+	if gates.runSkills() {
+		var err error
+		if pass, err = cfg.runSkills(tree, overviewPass); err != nil {
+			return false, err
+		}
 	}
-	return cfg.runSkills(tree, overviewPass)
+	cfg.renderAct()
+	return pass, nil
+}
+
+// renderAct names the act this run performed and the act it refused. Emitted once,
+// after every gate, on failing runs as well as passing ones.
+//
+// It states only the negative. The acts that ran already printed their own lines
+// above, so naming them again would say what the output already shows; what no other
+// line says is that a green run is silent about quality *by design*. exegesis is the
+// structural half by charter, and a reader who takes a pass for a quality verdict has
+// been misled by an omission rather than by a claim -- which is the failure a gate
+// that cannot say what it skipped always has.
+func (cfg *Config) renderAct() {
+	_, _ = fmt.Fprintln(cfg.Stdout,
+		"verify: structural gates only; semantic replay not performed "+
+			"(a pass means this tree is well-formed, not that any skill in it is good)")
 }
 
 // runSkills lints and gates every skill under tree, writes the manifest, and
@@ -181,12 +202,20 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 		return false, err
 	}
 	treeProblems := checkCatalog(expected, reports)
-	treeProblems = append(treeProblems, checkGraph(tree)...)
+	// Graph incompleteness is reported and does not fail the tree. A curated tree is
+	// deliberately a subset, so a depends-on target absent from it is provenance rather
+	// than a defect -- and nothing here can tell an archived skill from a typo, since
+	// being unqualified is exactly what makes a target unresolvable. Typo-catching
+	// belongs at write time, where the author is present and UnknownSlugs already
+	// answers it; blocking here would only make every curated tree permanently
+	// unverified.
+	incomplete := checkGraph(tree)
+	incomplete = append(incomplete, checkClosure(tree, reports)...)
 	verified := overviewPass && len(treeProblems) == 0 && allPass(reports)
 	if err := cfg.writeManifest(tree, reports, verified); err != nil {
 		return false, err
 	}
-	cfg.renderSkills(treeProblems, reports)
+	cfg.renderSkills(append(treeProblems, incomplete...), reports)
 	return verified, nil
 }
 
@@ -269,6 +298,70 @@ func checkCatalog(expected []string, reports []skillReport) []string {
 // A tree whose skills cannot all be loaded is already failing the per-skill gates,
 // so an unreadable tree is reported as a check that did not run rather than
 // mistaken for a clean graph.
+// checkClosure reports immediate subdirectories of tree that hold no SKILL.md, so a
+// reader can tell a lost skill from a deliberate working directory.
+//
+// It derives the set by **subtracting what Discover returned** rather than asking each
+// directory whether it holds a SKILL.md. Re-asking would put the rule that defines a
+// skill directory in two modules, and the drift would be silent: skillet could widen
+// what counts and this would keep reporting the old complement. Subtraction encodes
+// nothing about what a skill is.
+//
+// Safe over one level because fsutil.SubdirsContaining tests immediate children only
+// and does not recurse, so tree's own listing is the whole universe to subtract from.
+//
+// Requires: reports holds one entry per directory Discover returned.
+// Ensures:  every returned line names a directory present in tree and absent from
+//
+//	marker; the result is nil when the two sets agree.
+func checkClosure(tree string, reports []skillReport) []string {
+	entries, err := os.ReadDir(tree)
+	if err != nil {
+		return []string{fmt.Sprintf("closure: not checked: %v", err)}
+	}
+	all := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			all = append(all, e.Name())
+		}
+	}
+	verified := make([]string, 0, len(reports))
+	for i := range reports {
+		verified = append(verified, filepath.Base(reports[i].dir))
+	}
+	names := unlisted(all, verified)
+	problems := make([]string, 0, len(names))
+	for _, n := range names {
+		problems = append(problems, fmt.Sprintf(
+			"closure: %s: a directory with no SKILL.md, so no gate reads it "+
+				"(reported, not failed: a tree may hold working directories)", n,
+		))
+	}
+	return problems
+}
+
+// unlisted returns the names in all that are absent from verified, sorted.
+//
+// Requires: nothing; either slice may be empty and neither is mutated.
+// Ensures:  the result is sorted, holds no duplicates, and every element is in all
+//
+//	and not in verified.
+func unlisted(all, verified []string) []string {
+	known := make(map[string]bool, len(verified))
+	for _, v := range verified {
+		known[v] = true
+	}
+	var out []string
+	for _, a := range all {
+		if !known[a] {
+			out = append(out, a)
+			known[a] = true // a repeated name is one finding, not two
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 func checkGraph(tree string) []string {
 	nodes, err := indexgen.CollectNodes(tree)
 	if err != nil {
@@ -278,7 +371,8 @@ func checkGraph(tree string) []string {
 	problems := make([]string, 0, len(dangling))
 	for _, d := range dangling {
 		problems = append(problems, fmt.Sprintf(
-			"graph: %s: %s `%s` — no such skill in the tree (INDEX.md drops this edge)",
+			"graph: %s: %s `%s` — not in this tree, so INDEX.md cannot order on it "+
+				"(expected in a curated tree; verify does not fail on it)",
 			d.Source, d.Edge.Kind, d.Edge.Target,
 		))
 	}

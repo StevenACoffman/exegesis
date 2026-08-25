@@ -1,13 +1,10 @@
 package cmd_test
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/StevenACoffman/exegesis/cmd/root"
 )
 
 // writeNamedSkill writes a minimal skill whose frontmatter name matches its directory,
@@ -51,13 +48,14 @@ func readFileString(t *testing.T, path string) string {
 	return string(b)
 }
 
-func TestVerifyFailsOnDanglingEdgeTarget(t *testing.T) {
+func TestVerifyReportsDanglingEdgeWithoutFailing(t *testing.T) {
 	t.Parallel()
 	tree := t.TempDir()
 	dirA := writeNamedSkill(t, tree, "skilla")
 	writeNamedSkill(t, tree, "skillb")
 	appendRelated(t, dirA, "- depends-on: `ghost` — the target does not exist")
-	// Scaffold both so the graph problem is the only failure in play.
+	// Scaffold both so nothing else can fail the tree, which is what lets this
+	// assert the dangling edge on its own does not.
 	for _, name := range []string{"skilla", "skillb"} {
 		if _, err := run(t, "tests", "--scaffold", filepath.Join(tree, name)); err != nil {
 			t.Fatalf("scaffold %s: %v", name, err)
@@ -65,16 +63,15 @@ func TestVerifyFailsOnDanglingEdgeTarget(t *testing.T) {
 	}
 
 	out, err := run(t, "verify", tree)
-	var exit root.ExitError
-	if !errors.As(err, &exit) {
-		t.Fatalf("expected root.ExitError, got %v\n%s", err, out)
+	if err != nil {
+		t.Fatalf("a curated tree with an absent target must still verify, got %v\n%s", err, out)
 	}
 	if !strings.Contains(out, "graph: skilla: depends-on `ghost`") {
-		t.Errorf("expected a graph problem naming the dangling edge, got:\n%s", out)
+		t.Errorf("expected the absent target reported even though it does not fail:\n%s", out)
 	}
 	manifest := readFileString(t, filepath.Join(tree, "skills-manifest.json"))
-	if !strings.Contains(manifest, `"structure_verified": false`) {
-		t.Errorf("expected structure_verified=false in the manifest:\n%s", manifest)
+	if !strings.Contains(manifest, `"structure_verified": true`) {
+		t.Errorf("expected structure_verified=true in the manifest:\n%s", manifest)
 	}
 }
 
