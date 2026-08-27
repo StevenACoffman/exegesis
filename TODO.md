@@ -1957,7 +1957,28 @@ seven that destroys work rather than reshaping it. The decision record is in
 Measured over `steve-skill-market` (233 skills) after `exegesis normalize` had already
 converted 117 of them: **the parser resolves 222 edges from 520 related-skill bullets.**
 
-- [ ] **A name→slug lookup, so a bullet naming a skill by its display name resolves.**
+- [x] **A name→slug lookup, so a bullet naming a skill by its display name resolves.**
+  BUILT 2026-08-27 as `exegesis normalize --resolve-titles`, and **measuring changed both
+  its size and its sequencing.**
+
+  **It is 40% of the problem, not the whole of it.** The 240 unreadable bullets decompose:
+  46 where the bold token is *already a slug*, 97 where it is a *kind* (`**composes_with**`),
+  and 97 display titles. The first two are parser tolerance filed in skillet.
+
+  **`name:` frontmatter is useless here** — all 233 skills have `name` equal to their slug,
+  so the only title a skill carries is its H1. Exact H1 matching resolves **53 of 97**;
+  the slug-derived `Title` resolves 38; both together 54, so the second index buys one
+  bullet and doubles the collision surface. H1 alone.
+
+  **Reporting only, and that is the finding.** Resolving the title is necessary but not
+  sufficient: those bullets also use an italic kind and an arrow separator, so substituting
+  the right slug leaves them just as unreadable. Confirmed by handing `Normalize` a bullet
+  whose bold token was **already a valid slug** and watching it pass through untouched. So
+  skillet's dialect work is a **prerequisite**, not a peer — the sequencing filed here had
+  it backwards, and rewriting waits on it.
+
+  Exact match only, ambiguity refused, cross-tree inline slugs declined. On the market
+  corpus: **97 title-named bullets — 53 resolved, 44 unknown, 0 ambiguous.**
   The dialects `related` cannot read split four ways, and three are parser tolerance filed
   in skillet (underscore kinds, italic kind markers, arrow separators). **This one is not
   a parsing problem**: `- **Architect Elevator** — *depends-on* → …` names a skill by
