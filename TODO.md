@@ -647,7 +647,8 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       and its five helpers were deleted in favour of it. **v0.9.0** adds
       `Skill.FrontmatterErr`, which is what let `lint` stop reporting a name/folder mismatch
       on a skill whose name could not be read.
-- [ ] **`--check redlines` on a mixed tree is a manual gate; consider a derived one.**
+- [x] **`--check redlines` on a mixed tree is a manual gate; consider a derived one.**
+      *Done in skillet, and the answer was a declared field rather than a derived gate.*
       `redlines.checkSegments` requires all six RIA-TV++ labels of every skill it sees, and
       it is deliberately unguarded — the package comment says so, noting only `checkTrigger`
       is conditioned (on `FrontmatterErr == nil`). Today that is contained by the check being
@@ -677,13 +678,36 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       the bulk of it. A partial-conformance predicate would therefore be measuring the wrong
       thing: a hand-written skill has no RIA segments not because it drifted from the format
       but because it never claimed it.
-      **skillet now carries the shared half** — two closed single-valued fields, audience and
-      lineage, on `manifest.Skill`, with the lineage one the priority. Not built: the trigger
-      is a second checker that would branch on it, and nobody has yet written which rules
-      each kind keeps. When it lands, `--check redlines` reads lineage rather than growing a
-      derived predicate, which also answers the objection this entry records — a malformed
-      book skill cannot escape by shedding headings, because its lineage is declared at
-      creation rather than inferred from its current shape.
+      **This entry claimed skillet already carried the shared half. It did not** — corrected
+      2026-08-27. `grep -i lineage` over skillet's source returned nothing and
+      `manifest.Skill` was `{Slug, Dir, Hash, TestPrompts, TestPromptsHash}`; what existed
+      was skillet's own *open* entry with the design argued. Recording a designed thing as a
+      shipped one is the failure mode this family keeps finding, and it very nearly sent
+      this pass to build a derived predicate the measurement had already ruled out.
+
+      **DONE 2026-08-27 in skillet, which is where `checkSegments` lives.**
+      `skill.Lineage` is closed and typed, declared under **`metadata.lineage`** (not
+      top-level: speclint's allowlist is the published agentskills.io set, and its own rule
+      sends anything outside the spec to `metadata` — declaring it top-level traded six
+      diagnostics for a `disallowed key` error, found by running it). `redlines.Check` asks
+      for the RIA segments only where the skill claims that format, and an unrecognised
+      value is graded strictly *and* reported.
+
+      **The objection this entry raised is answered structurally**: a malformed book skill
+      cannot escape by shedding headings, because lineage is declared rather than inferred.
+      And absence is graded strictly, so the exemption is not reachable by omission either.
+
+      **Measured, and it silences nothing yet — deliberately.** 428 RIA-segment diagnostics
+      across the 298 installed skills before and after (the corpus grew from the 233 this
+      entry measured). The count drops six per skill as each hand-written one declares its
+      lineage. That is a migration a one-line declaration performs, which is a different
+      thing from an unfixable false positive: before this, a hand-written skill could not
+      be exempted at all and the caller carried correctness by knowing which tree it was in.
+
+      Not merged with the skillsaw/adh predicate, as this entry instructed. Having now built
+      both: adh's asks "does this artifact execute anything?" and must be *derived* because
+      nobody declares it; this asks "was this distilled from a source?" and must not be,
+      because the document is the only witness to its own origin.
 
 ## Convenience gaps (from the gemini_skills gap analysis, 2026-08-05)
 
@@ -1142,7 +1166,7 @@ against a README.
   **`quotecheck` is deliberately NOT promoted** — its 2nd consumer is the knowledge-base
   ingestion tool, which does not exist. One prospective consumer is not evidence.
   canonizer adopting `textnorm` is that repo's commit; the promotion is what unblocks it.
-  - [ ] **When it is promoted, expect a signature change exegesis does not need.**
+  - [x] **When it is promoted, expect a signature change exegesis does not need.**
     `gnosis` (`~/Documents/git/gnosis/SPEC.md` §4.3) decided against a PDF extractor, so
     binary sources are admitted as `referenced` — hash and URI recorded, **no local text
     kept**. A caller in that state has no haystack, and passing an empty one reports every
