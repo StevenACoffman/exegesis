@@ -7,6 +7,7 @@ package normalize
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -22,6 +23,7 @@ type Config struct {
 	*root.Config
 	Check         bool
 	ResolveTitles bool
+	Write         bool
 	Flags         *ff.FlagSet
 	Command       *ff.Command
 }
@@ -35,6 +37,8 @@ func New(parent *root.Config) *Config {
 		"report which skills are not canonical without writing (exit 1 if any)")
 	cfg.Flags.BoolVar(&cfg.ResolveTitles, 0, "resolve-titles",
 		"report bullets naming a skill by display title, and what each resolves to")
+	cfg.Flags.BoolVar(&cfg.Write, 0, "write",
+		"with --resolve-titles, rewrite the exactly-and-unambiguously resolved ones")
 	cfg.Command = &ff.Command{
 		Name:      "normalize",
 		Usage:     "exegesis normalize [--check] [TREE]",
@@ -141,6 +145,9 @@ func (cfg *Config) reportTitles(tree string) error {
 	if err != nil {
 		return fmt.Errorf("normalize: %w", err)
 	}
+	if cfg.Write {
+		return cfg.writeTitles(tree, nodes)
+	}
 	refs := related.TitleRefs(nodes)
 	counts := map[related.Resolution]int{}
 	for _, r := range refs {
@@ -156,5 +163,48 @@ func (cfg *Config) reportTitles(tree string) error {
 		counts[related.TitleUnknown],
 		counts[related.TitleAmbiguous],
 	)
+	return nil
+}
+
+// writeTitles rewrites the bullets whose display title resolves exactly and
+// unambiguously, then canonicalises the sections it touched.
+//
+// **Two passes, and the split is the safety.** ResolveTitles only substitutes the bold
+// token; Normalize then reads the bullet the same way it reads every other one, so a
+// resolved title produces an edge through exactly the path an authored slug does. Doing
+// it in one step would mean the parser trusting a lookup, and a wrong lookup would then
+// become an edge with nothing recording that a substitution happened.
+//
+// An unknown or ambiguous title is left byte-identical and still reported by the
+// report-only mode, so nothing is silently dropped by choosing to write.
+func (cfg *Config) writeTitles(tree string, nodes []related.Node) error {
+	titles := related.NewTitles(nodes)
+	known := make(map[string]bool, len(nodes))
+	for i := range nodes {
+		known[nodes[i].Slug] = true
+	}
+	dirs, err := skill.Discover(tree)
+	if err != nil {
+		return fmt.Errorf("normalize: %w", err)
+	}
+	resolved, files := 0, 0
+	for _, dir := range dirs {
+		s, loadErr := skill.Load(dir)
+		if loadErr != nil {
+			return fmt.Errorf("normalize: %w", loadErr)
+		}
+		out, n := related.ResolveTitles(s.Raw, titles, known)
+		if n == 0 {
+			continue
+		}
+		out, _ = related.Normalize(out)
+		if writeErr := atomicfile.WriteFile(s.Path, []byte(out), 0o600); writeErr != nil {
+			return fmt.Errorf("normalize: %w", writeErr)
+		}
+		resolved += n
+		files++
+		_, _ = fmt.Fprintf(cfg.Stdout, "%s: resolved %d title(s)\n", filepath.Base(dir), n)
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "resolved %d title(s) across %d skill(s)\n", resolved, files)
 	return nil
 }
