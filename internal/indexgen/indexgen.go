@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/StevenACoffman/exegesis/internal/related"
 	"github.com/StevenACoffman/skillet/naming"
+	"github.com/StevenACoffman/skillet/related"
 	"github.com/StevenACoffman/skillet/skill"
 )
 

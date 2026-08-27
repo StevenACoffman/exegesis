@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/StevenACoffman/exegesis/internal/related"
+	"github.com/StevenACoffman/skillet/related"
 	"github.com/StevenACoffman/skillet/skill"
 )
 

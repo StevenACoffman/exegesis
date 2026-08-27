@@ -23,8 +23,8 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/StevenACoffman/exegesis/internal/related"
 	"github.com/StevenACoffman/skillet/frontmatter"
+	"github.com/StevenACoffman/skillet/related"
 )
 
 // Heading is the body section the provenance moves into, in the form this package

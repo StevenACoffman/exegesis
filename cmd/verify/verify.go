@@ -17,10 +17,10 @@ import (
 	lintlib "github.com/StevenACoffman/exegesis/internal/lint"
 	"github.com/StevenACoffman/exegesis/internal/overview"
 	"github.com/StevenACoffman/exegesis/internal/registry"
-	"github.com/StevenACoffman/exegesis/internal/related"
 	"github.com/StevenACoffman/exegesis/internal/testcomp"
 	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/manifest"
+	"github.com/StevenACoffman/skillet/related"
 	"github.com/StevenACoffman/skillet/skill"
 	"github.com/StevenACoffman/skillet/testprompts"
 )

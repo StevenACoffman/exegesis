@@ -16,8 +16,8 @@ import (
 	"github.com/StevenACoffman/exegesis/cmd/root"
 	"github.com/StevenACoffman/exegesis/internal/indexgen"
 	relatelib "github.com/StevenACoffman/exegesis/internal/relate"
-	"github.com/StevenACoffman/exegesis/internal/related"
 	"github.com/StevenACoffman/skillet/atomicfile"
+	"github.com/StevenACoffman/skillet/related"
 	"github.com/StevenACoffman/skillet/skill"
 )
 
