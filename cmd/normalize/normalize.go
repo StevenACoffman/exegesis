@@ -11,6 +11,7 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/exegesis/cmd/root"
+	"github.com/StevenACoffman/exegesis/internal/indexgen"
 	"github.com/StevenACoffman/exegesis/internal/related"
 	"github.com/StevenACoffman/skillet/atomicfile"
 	"github.com/StevenACoffman/skillet/skill"
@@ -19,9 +20,10 @@ import (
 // Config holds the normalize command configuration.
 type Config struct {
 	*root.Config
-	Check   bool
-	Flags   *ff.FlagSet
-	Command *ff.Command
+	Check         bool
+	ResolveTitles bool
+	Flags         *ff.FlagSet
+	Command       *ff.Command
 }
 
 // New creates and registers the normalize command.
@@ -31,6 +33,8 @@ func New(parent *root.Config) *Config {
 	cfg.Flags = ff.NewFlagSet("normalize").SetParent(parent.Flags)
 	cfg.Flags.BoolVar(&cfg.Check, 0, "check",
 		"report which skills are not canonical without writing (exit 1 if any)")
+	cfg.Flags.BoolVar(&cfg.ResolveTitles, 0, "resolve-titles",
+		"report bullets naming a skill by display title, and what each resolves to")
 	cfg.Command = &ff.Command{
 		Name:      "normalize",
 		Usage:     "exegesis normalize [--check] [TREE]",
@@ -64,6 +68,9 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 		tree = args[0]
 	default:
 		return root.Usagef("normalize: expected at most one tree path")
+	}
+	if cfg.ResolveTitles {
+		return cfg.reportTitles(tree)
 	}
 	dirs, err := skill.Discover(tree)
 	if err != nil {
@@ -117,5 +124,37 @@ func (cfg *Config) report(changed, total int) error {
 		return root.ExitError(1)
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "normalized %d of %d skill(s)\n", changed, total)
+	return nil
+}
+
+// reportTitles lists the bullets that name a skill by display title, and what each
+// resolves to in this tree.
+//
+// **Reporting only, and the reason is measured rather than cautious.** Resolving a title
+// is necessary but not sufficient: the bullets carrying titles also use an italic kind and
+// an arrow separator, which the parser does not read, so substituting the correct slug
+// leaves them exactly as unreadable. Confirmed by handing Normalize a bullet whose bold
+// token was already a valid slug and watching it pass through untouched. Rewriting waits
+// on the dialect work; knowing which titles resolve does not.
+func (cfg *Config) reportTitles(tree string) error {
+	nodes, err := indexgen.CollectNodes(tree)
+	if err != nil {
+		return fmt.Errorf("normalize: %w", err)
+	}
+	refs := related.TitleRefs(nodes)
+	counts := map[related.Resolution]int{}
+	for _, r := range refs {
+		counts[r.Resolution]++
+		_, _ = fmt.Fprintf(cfg.Stdout, "%s\t%s\t%s\t%s\n",
+			r.From, r.Resolution, r.Title, r.Slug)
+	}
+	_, _ = fmt.Fprintf(
+		cfg.Stdout,
+		"%d title-named bullet(s): %d resolved, %d unknown, %d ambiguous\n",
+		len(refs),
+		counts[related.TitleResolved],
+		counts[related.TitleUnknown],
+		counts[related.TitleAmbiguous],
+	)
 	return nil
 }

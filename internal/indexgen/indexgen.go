@@ -61,6 +61,8 @@ func CollectNodes(tree string) ([]related.Node, error) {
 			Title:       naming.Title(slug),
 			Description: s.Description,
 			Edges:       related.ParseSection(s.Body),
+			Heading:     related.Heading(s.Body),
+			Body:        s.Body,
 		})
 	}
 	return nodes, nil

@@ -13,6 +13,15 @@ type Node struct {
 	Title       string
 	Description string
 	Edges       []Edge
+
+	// Body is the skill's markdown body, kept so title resolution can re-read the
+	// bullets without the caller passing them separately.
+	Body string
+
+	// Heading is the skill's H1 as written, which Title is not: Title is derived from
+	// the slug, so it can never match a bullet that names a skill the way its document
+	// does. Empty when the document has no H1.
+	Heading string
 }
 
 // DanglingEdge is one edge whose target is not a skill in the tree — an edge the
@@ -48,7 +57,8 @@ func LearningPath(nodes []Node) (order, cyclic, unresolved []string) {
 	slugs, known := slugSet(nodes)
 	indegree := make(map[string]int, len(slugs))
 	successors := make(map[string][]string, len(slugs))
-	for _, n := range nodes {
+	for i := range nodes {
+		n := &nodes[i]
 		for _, prereq := range prereqs(n, known) {
 			successors[prereq] = append(successors[prereq], n.Slug)
 			indegree[n.Slug]++
@@ -87,8 +97,9 @@ func Mermaid(nodes []Node) string {
 	_, known := slugSet(nodes)
 	var b strings.Builder
 	b.WriteString("graph TD\n")
-	for _, n := range sortedBySlug(nodes) {
-		fmt.Fprintf(&b, "  %s[%q]\n", n.Slug, mermaidLabel(n))
+	sorted := sortedBySlug(nodes)
+	for i := range sorted {
+		fmt.Fprintf(&b, "  %s[%q]\n", sorted[i].Slug, mermaidLabel(&sorted[i]))
 	}
 	for _, line := range edgeLines(nodes, known) {
 		b.WriteString(line)
@@ -162,7 +173,7 @@ func UnknownSlugs(nodes []Node, want []string) []string {
 // hasAbsentPrereq reports whether n names a depends-on target that is not a slug in
 // this tree and does not name another one. It is the complement of what prereqs keeps:
 // prereqs answers what can order the path, this answers what was dropped doing so.
-func hasAbsentPrereq(n Node, known map[string]bool) bool {
+func hasAbsentPrereq(n *Node, known map[string]bool) bool {
 	for _, e := range n.Edges {
 		if e.Kind == DependsOn && !known[e.Target] && !Qualified(e.Target) {
 			return true
@@ -171,7 +182,7 @@ func hasAbsentPrereq(n Node, known map[string]bool) bool {
 	return false
 }
 
-func prereqs(n Node, known map[string]bool) []string {
+func prereqs(n *Node, known map[string]bool) []string {
 	var out []string
 	for _, e := range n.Edges {
 		if e.Kind == DependsOn && known[e.Target] {
@@ -230,7 +241,7 @@ func sortedBySlug(nodes []Node) []Node {
 
 // mermaidLabel is the node's title with double quotes neutralized so the label
 // stays valid inside a quoted Mermaid node.
-func mermaidLabel(n Node) string {
+func mermaidLabel(n *Node) string {
 	label := n.Title
 	if label == "" {
 		label = n.Slug
