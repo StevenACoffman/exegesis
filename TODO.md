@@ -1951,3 +1951,27 @@ seven that destroys work rather than reshaping it. The decision record is in
       The refusal message should keep its counts — it reports how many cases sit under each
       key, which is more useful than a bare refusal — so take the count form if skillet
       provides one, and keep the "merge them by hand first" instruction either way.
+
+## Half the Declared Edges Are Unreadable (2026-08-27)
+
+Measured over `steve-skill-market` (233 skills) after `exegesis normalize` had already
+converted 117 of them: **the parser resolves 222 edges from 520 related-skill bullets.**
+
+- [ ] **A name→slug lookup, so a bullet naming a skill by its display name resolves.**
+  The dialects `related` cannot read split four ways, and three are parser tolerance filed
+  in skillet (underscore kinds, italic kind markers, arrow separators). **This one is not
+  a parsing problem**: `- **Architect Elevator** — *depends-on* → …` names a skill by
+  title, and nothing in the document maps that title to `architect-elevator`. A parser
+  given one document cannot resolve it; only something that has walked the tree can.
+
+  That makes it exegesis's, since exegesis is what walks the tree — `index` already builds
+  the node set, and `verify` already resolves edge targets against it.
+
+  **The hazard to design against is a wrong match, not a missed one.** Slugifying a title
+  and hoping is how `Competing Consumers vs. Dispatcher` silently becomes an edge to
+  whatever `competing-consumers-vs-dispatcher` happens to be — or worse, to a near-miss.
+  An unresolved bullet reported is strictly better than a resolved bullet pointing
+  somewhere plausible and wrong, because the first is visible and the second is not.
+
+  Prerequisite for the orphan gate filed in skillsaw: an orphan count over 222 of 520
+  declared relationships would be confidently wrong.
