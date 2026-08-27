@@ -1235,8 +1235,32 @@ against a README.
   src: `agent-red/qvr` `internal/security/{unicode,rules}.go` — its wider 15-category
   taxonomy (`prompt_injection`, `data_exfiltration`, `memory_poisoning`,
   `mcp_tool_poisoning`, …) is the roadmap, not the first slice.
-- [ ] **A "what did this change orphan?" gate over the related-skill edge graph — and the
-  applicability question it answers.** **Deferred 2026-08-23, and my sequencing reason for
+- [x] **A "what did this change orphan?" gate over the related-skill edge graph — and the
+  applicability question it answers.** *Sited elsewhere 2026-08-27; the siting question this
+  entry insisted on answering first is now answered, and the answer is "not here".*
+
+  **exegesis stays snapshot-shaped, and that is a property worth keeping rather than a
+  limitation to work around.** Re-verified: one `manifest.Build` call site, **zero**
+  `manifest.Diff`. Every exegesis command is answerable from one tree with no history, and a
+  baseline mode would cost that permanently for one check.
+
+  **The deciding argument was not that skillsaw has baselines but that it has already solved
+  this gate's sub-problems.** `skillsaw internal/edit/coupling.go` — `Uncoupled(base, cur)` —
+  carries two rules the orphan gate needs identically: *"a location absent from the baseline
+  is new and has nothing to be uncoupled from"* (a skill absent from the baseline cannot be
+  *newly* orphaned) and *"the result is advisory… a gate that fires on those teaches people
+  to bypass it"* (an intentional removal legitimately orphans something). Siting it there
+  inherits those decisions instead of re-deriving them, worse, here.
+
+  **The absolute half was refused, not deferred.** Shipping *"this skill has no inbound edges
+  at all"* here would collapse the `BaseAvailable` distinction this entry exists to protect —
+  "no baseline" is not "zero" — and it is, in this entry's own words, "the weaker check the
+  meter deliberately improves on". A knowingly-weaker check in one tool beside the real one
+  in another is how a family ends up with two answers to one question.
+
+  What leaves exegesis: `internal/related` moves to skillet, which is justified on its own
+  merits — it is stdlib-only pure body parsing with ten consumers here, and skillsaw cannot
+  reach it while it lives under `internal/`. Filed in skillet and skillsaw. Original entry: **Deferred 2026-08-23, and my sequencing reason for
   bundling it was wrong.** I had planned it alongside the two curated-tree entries above
   because all three read the same edge graph. *Same graph is not shared logic*: those two ask
   whether a named target is present, this one asks which node lost its last **inbound** edge
