@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/StevenACoffman/exegesis/internal/related"
 	"github.com/StevenACoffman/skillet/identity"
+	"github.com/StevenACoffman/skillet/related"
 	"github.com/StevenACoffman/skillet/ruleset/synthesize"
 	"github.com/StevenACoffman/skillet/skill"
 	"github.com/StevenACoffman/skillet/testprompts"

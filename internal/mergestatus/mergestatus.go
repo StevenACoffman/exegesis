@@ -14,10 +14,13 @@ package mergestatus
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/goccy/go-yaml"
+
+	"github.com/StevenACoffman/skillet/related"
 )
 
 // Heading is the section the ledger lives in, in the form this package writes.
@@ -29,6 +32,25 @@ const Heading = "## Merge Status"
 
 // fenceLine opens and closes the ledger's YAML block.
 const fenceLine = "```yaml"
+
+// MergedTree is where a merge run's output lives, relative to the parent of the tree
+// holding the source skill: `<parent>/merged/<run>/<into>`.
+//
+// A constant rather than a flag. Every behavioural knob in this CLI is a registered flag,
+// and this is not one: it is the layout merge-skills prescribes, and the form all 26
+// `superseded-by` bullets in the real books already write. A caller cannot know it better
+// than this package does, and a wrong composition is caught rather than assumed — the
+// command checks the composed target against the filesystem and reports one that names
+// nothing.
+const MergedTree = "merged"
+
+// The two states that name a merged skill in Into, and so the only two that imply a
+// superseded-by edge. Named because SupersededBy would otherwise spell "partial" a
+// second time, and a vocabulary spelled twice is a vocabulary that can disagree.
+const (
+	stateMerged  = "merged"
+	statePartial = "partial"
+)
 
 // Entry is one merge run's verdict on one source skill.
 type Entry struct {
@@ -51,8 +73,8 @@ func States() map[string][]string {
 		"surface-resemblance": {"pair"},
 		"complementary":       {"pair"},
 		"rejected":            {"pair", "reason"},
-		"partial":             {"into", "excluded"},
-		"merged":              {"into"},
+		statePartial:          {"into", "excluded"},
+		stateMerged:           {"into"},
 	}
 }
 
@@ -97,6 +119,42 @@ func (e *Entry) Validate() []string {
 			e.Reason, strings.Join(reasonNames(), ", ")))
 	}
 	return problems
+}
+
+// SupersededBy returns the related-skill edge this entry implies: the source skill it was
+// recorded on was replaced by the merged skill named in Into, produced by the run named
+// in Run.
+//
+// Requires: nothing; an entry that does not validate yields ok == false rather than a
+// half-formed edge.
+// Ensures:  ok is true exactly for the states that take `into`, read from States() rather
+// than listed again here; when ok, related.Qualified(edge.Target) holds. It is pure.
+//
+// **The target is composed here and the ledger's own `into:` stays a bare slug.** The two
+// spellings are not a choice between equals. The ledger is append-only, so entries already
+// on disk carry a bare slug and re-reading them under a qualified schema would put two
+// meanings of one key in an audit trail; merge-skills documents `--into` as a bare slug;
+// and a bullet needs the qualified form because the merged skill lives in a sibling tree
+// that a per-tree graph gate cannot see. Composing `merged/<run>/<into>` satisfies both
+// and invents nothing — it is the form the corpus already writes.
+//
+// The rationale is deliberately short and says only what the edge is for: navigation from
+// a dead skill to its replacement. What was excluded, why a pair was rejected, and which
+// run decided are the ledger's job, and restating them in the bullet would be two records
+// of one decision drifting apart.
+func (e *Entry) SupersededBy() (related.Edge, bool) {
+	if !slices.Contains(States()[e.State], "into") || strings.TrimSpace(e.Into) == "" {
+		return related.Edge{}, false
+	}
+	rationale := "superseded by the " + e.Run + " merge run"
+	if e.State == statePartial {
+		rationale = "partially " + rationale
+	}
+	return related.Edge{
+		Kind:      related.SupersededBy,
+		Target:    MergedTree + "/" + e.Run + "/" + e.Into,
+		Rationale: rationale,
+	}, true
 }
 
 // Render returns e as one YAML list item, indented for the ledger block.

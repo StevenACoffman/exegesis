@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/StevenACoffman/exegesis/internal/related"
 	"github.com/StevenACoffman/skillet/naming"
+	"github.com/StevenACoffman/skillet/related"
 	"github.com/StevenACoffman/skillet/skill"
 )
 
@@ -61,6 +61,8 @@ func CollectNodes(tree string) ([]related.Node, error) {
 			Title:       naming.Title(slug),
 			Description: s.Description,
 			Edges:       related.ParseSection(s.Body),
+			Heading:     related.Heading(s.Body),
+			Body:        s.Body,
 		})
 	}
 	return nodes, nil

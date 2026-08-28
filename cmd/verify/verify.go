@@ -17,10 +17,11 @@ import (
 	lintlib "github.com/StevenACoffman/exegesis/internal/lint"
 	"github.com/StevenACoffman/exegesis/internal/overview"
 	"github.com/StevenACoffman/exegesis/internal/registry"
-	"github.com/StevenACoffman/exegesis/internal/related"
 	"github.com/StevenACoffman/exegesis/internal/testcomp"
 	"github.com/StevenACoffman/skillet/finding"
+	"github.com/StevenACoffman/skillet/identity"
 	"github.com/StevenACoffman/skillet/manifest"
+	"github.com/StevenACoffman/skillet/related"
 	"github.com/StevenACoffman/skillet/skill"
 	"github.com/StevenACoffman/skillet/testprompts"
 )
@@ -42,9 +43,15 @@ type skillReport struct {
 	dir      string
 	slug     string
 	hash     string
+	testHash string // sha256 of the test-prompts bytes; "" when there is no file
 	findings []finding.Diagnostic
 	problems []string // test-prompts problems (incl. "missing test-prompts.json")
 	hasTests bool
+
+	// edges is the skill's related-skills graph as the manifest records it, or nil when
+	// SKILL.md could not be read. Nil is not "declares none": the manifest tells those
+	// apart with a flag on the document, not per skill.
+	edges map[string][]string
 }
 
 // gateSet is which verify gates to run. The zero value runs none; all=true (the
@@ -111,9 +118,11 @@ the edge_case floor) instead of the standard one, and require MERGE_OVERVIEW.md
 at the tree root. Without it, a merged skill's prefer_merged_over_source cases
 are rejected as an unknown type.
 
-On completion a skills run writes skills-manifest.json (structure_verified
-reflects whether every gate passed, and each entry carries the skill's sha256)
-for the skillsaw-skill hand-off, and exits non-zero if any gate failed.`,
+On completion a skills run writes skills-manifest.json for the skillsaw-skill
+hand-off, and exits non-zero if any gate failed. structure_verified reflects
+whether every gate passed; each entry carries the sha256 of SKILL.md and, where
+there is one, of test-prompts.json — the second so a later diff of two manifests
+can tell a skill whose prompts were rewritten from one whose prose alone moved.`,
 		Flags: cfg.Flags,
 		Exec:  cfg.exec,
 	}
@@ -440,32 +449,76 @@ func verifyOne(dir string, opts lintlib.Options, comp testprompts.Composition) s
 	r := skillReport{dir: dir, slug: filepath.Base(dir)}
 	if s, err := skill.Load(dir); err == nil {
 		r.hash = s.Hash()
+		// Off the same load as the hash rather than a second read, which is what keeps an
+		// unloadable skill under one rule: hash and edges are both empty because nothing
+		// was read, not because the document said nothing.
+		r.edges = related.EdgeMap(related.ParseSection(s.Body))
 		r.findings = lintlib.Check(s, opts)
 	} else {
 		r.findings = []finding.Diagnostic{{Severity: finding.SeverityError, Message: err.Error()}}
 	}
-	tpPath := filepath.Join(dir, "test-prompts.json")
-	f, err := testprompts.Load(tpPath)
-	switch {
-	case err != nil:
-		r.problems = []string{"missing or unreadable test-prompts.json"}
-	default:
-		r.hasTests = true
-		r.problems = f.ValidateAgainst(comp)
-	}
+	r.hasTests, r.testHash, r.problems = gateTestPrompts(dir, comp)
 	return r
+}
+
+// gateTestPrompts reads a skill's test-prompts file, hashes the bytes, and gates the
+// parsed cases against comp.
+//
+// The bytes are read here rather than through testprompts.Load because the manifest
+// needs their hash and Load hands back only the parsed file. Hashing what was read --
+// not a re-serialization of what was parsed -- is what lets a hash written by exegesis
+// be compared with one written by any other tool that has the same file.
+//
+// present is true whenever the file was **read**, including when it then failed to
+// parse: skillet's manifest documents an empty hash as *absent*, and a malformed file
+// is present and can change. A parse failure is a problem, not an absence, and the
+// verdict is unaffected either way -- skillPasses already requires no problems.
+func gateTestPrompts(
+	dir string,
+	comp testprompts.Composition,
+) (present bool, hash string, problems []string) {
+	b, err := os.ReadFile(filepath.Join(dir, "test-prompts.json"))
+	if err != nil {
+		return false, "", []string{"missing or unreadable test-prompts.json"}
+	}
+	hash = identity.Hash(string(b))
+	f, err := testprompts.Parse(b)
+	if err != nil {
+		// Reported as itself rather than folded into the message above: a file that is
+		// there and malformed is a different repair from one that is not there, and the
+		// parse error says where to look. The caller prefixes the slug, so the path is
+		// already named.
+		return true, hash, []string{err.Error()}
+	}
+	return true, hash, f.ValidateAgainst(comp)
 }
 
 func (cfg *Config) writeManifest(tree string, reports []skillReport, verified bool) error {
 	entries := make([]manifest.Skill, 0, len(reports))
-	for _, r := range reports {
-		e := manifest.Skill{Slug: r.slug, Dir: r.dir, Hash: r.hash}
+	// Indexed rather than ranged by value: skillReport carries two slices and a map, and
+	// copying one per skill is work with nothing to show for it.
+	for i := range reports {
+		r := &reports[i]
+		e := manifest.Skill{Slug: r.slug, Dir: r.dir, Hash: r.hash, Edges: r.edges}
 		if r.hasTests {
+			// Both fields or neither. The path says a file is there; the hash says what
+			// it holds, and without it manifest.Diff compares "" with "" and reports
+			// every skill's prompts unchanged however they were rewritten.
 			e.TestPrompts = filepath.Join(r.dir, "test-prompts.json")
+			e.TestPromptsHash = r.testHash
 		}
 		entries = append(entries, e)
 	}
-	b, err := manifest.Build("exegesis", tree, entries, verified).Marshal()
+	m := manifest.Build("exegesis", tree, entries, verified)
+	// Set here rather than passed to Build, because Build takes the emitting tool and
+	// whether every gate passed, and "did the producer read the graph" is neither.
+	//
+	// It is a claim about the run, not about what was found: a tree that declares no edges
+	// and a tree nobody asked are the same bytes, and a consumer told the difference only
+	// by this flag. Forgetting it fails closed -- the consumer reads the graph as
+	// unavailable and declines -- which is why it sits beside the loop that fills Edges.
+	m.EdgesRecorded = true
+	b, err := m.Marshal()
 	if err != nil {
 		return fmt.Errorf("build manifest: %w", err)
 	}

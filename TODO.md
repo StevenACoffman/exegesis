@@ -114,8 +114,10 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       rumdl issues, and that `exegesis lint` still passes on a skill carrying a ledger.
       The first two-level command in this CLI (`merge-status <append|check>`), matching the
       syntax merge-skills/SKILL.md already tells agents to run.
-      **`--link` is NOT built**: it writes a `superseded-by` bullet. The flag is accepted and
-      returns a usage error saying so, rather than failing as an unknown flag.
+      **`--link` is BUILT (2026-08-27)** — see *"The Last Unbuilt Surface"* below for what
+      shipped and which of the two spellings the sub-question was resolved to.
+      Original entry: **`--link` is NOT built**: it writes a `superseded-by` bullet. The flag
+      is accepted and returns a usage error saying so, rather than failing as an unknown flag.
       **Unblocked 2026-08-08** — the edge kind is decided (add it; see below). Building
       `--link` now waits only on the kind itself, plus one sub-question it owns: `--into` is
       documented as a bare merged-skill slug while the bullet needs a tree-qualified target,
@@ -399,10 +401,12 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       the gate did not start crying wolf about cross-tree targets. 25 raw bullets → 24 rewritten
       plus 1 in `effective-go-recipes/skills/`, whose skills sit two levels below the tree root
       and which converts when handed that path — a discovery-depth quirk, not a reader gap.
-      **Still open, and it belongs to `--link` rather than here:** `--into` is documented as a
-      bare merged-skill slug while the bullet needs a tree-qualified target, so either `--link`
-      composes `merged/<run>/<into>` from the ledger fields, or `--into` starts carrying the
-      qualified form and the ledger's `into:` becomes qualified with it.
+      **Settled 2026-08-27 with `--link`:** `--link` composes `merged/<run>/<into>` and the
+      ledger's `into:` stays a bare slug. See *"The Last Unbuilt Surface"* below.
+      Original entry: **Still open, and it belongs to `--link` rather than here:** `--into` is
+      documented as a bare merged-skill slug while the bullet needs a tree-qualified target,
+      so either `--link` composes `merged/<run>/<into>` from the ledger fields, or `--into`
+      starts carrying the qualified form and the ledger's `into:` becomes qualified with it.
 
       Noted while measuring, not part of this: **25 source skills carry
       `relation: superseded-by` in *frontmatter*** — the same lint-failing shape the merged
@@ -647,7 +651,8 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       and its five helpers were deleted in favour of it. **v0.9.0** adds
       `Skill.FrontmatterErr`, which is what let `lint` stop reporting a name/folder mismatch
       on a skill whose name could not be read.
-- [ ] **`--check redlines` on a mixed tree is a manual gate; consider a derived one.**
+- [x] **`--check redlines` on a mixed tree is a manual gate; consider a derived one.**
+      *Done in skillet, and the answer was a declared field rather than a derived gate.*
       `redlines.checkSegments` requires all six RIA-TV++ labels of every skill it sees, and
       it is deliberately unguarded — the package comment says so, noting only `checkTrigger`
       is conditioned (on `FrontmatterErr == nil`). Today that is contained by the check being
@@ -677,13 +682,36 @@ eval harness) found deterministic pieces worth adopting. exegesis stays the
       the bulk of it. A partial-conformance predicate would therefore be measuring the wrong
       thing: a hand-written skill has no RIA segments not because it drifted from the format
       but because it never claimed it.
-      **skillet now carries the shared half** — two closed single-valued fields, audience and
-      lineage, on `manifest.Skill`, with the lineage one the priority. Not built: the trigger
-      is a second checker that would branch on it, and nobody has yet written which rules
-      each kind keeps. When it lands, `--check redlines` reads lineage rather than growing a
-      derived predicate, which also answers the objection this entry records — a malformed
-      book skill cannot escape by shedding headings, because its lineage is declared at
-      creation rather than inferred from its current shape.
+      **This entry claimed skillet already carried the shared half. It did not** — corrected
+      2026-08-27. `grep -i lineage` over skillet's source returned nothing and
+      `manifest.Skill` was `{Slug, Dir, Hash, TestPrompts, TestPromptsHash}`; what existed
+      was skillet's own *open* entry with the design argued. Recording a designed thing as a
+      shipped one is the failure mode this family keeps finding, and it very nearly sent
+      this pass to build a derived predicate the measurement had already ruled out.
+
+      **DONE 2026-08-27 in skillet, which is where `checkSegments` lives.**
+      `skill.Lineage` is closed and typed, declared under **`metadata.lineage`** (not
+      top-level: speclint's allowlist is the published agentskills.io set, and its own rule
+      sends anything outside the spec to `metadata` — declaring it top-level traded six
+      diagnostics for a `disallowed key` error, found by running it). `redlines.Check` asks
+      for the RIA segments only where the skill claims that format, and an unrecognised
+      value is graded strictly *and* reported.
+
+      **The objection this entry raised is answered structurally**: a malformed book skill
+      cannot escape by shedding headings, because lineage is declared rather than inferred.
+      And absence is graded strictly, so the exemption is not reachable by omission either.
+
+      **Measured, and it silences nothing yet — deliberately.** 428 RIA-segment diagnostics
+      across the 298 installed skills before and after (the corpus grew from the 233 this
+      entry measured). The count drops six per skill as each hand-written one declares its
+      lineage. That is a migration a one-line declaration performs, which is a different
+      thing from an unfixable false positive: before this, a hand-written skill could not
+      be exempted at all and the caller carried correctness by knowing which tree it was in.
+
+      Not merged with the skillsaw/adh predicate, as this entry instructed. Having now built
+      both: adh's asks "does this artifact execute anything?" and must be *derived* because
+      nobody declares it; this asks "was this distilled from a source?" and must not be,
+      because the document is the only witness to its own origin.
 
 ## Convenience gaps (from the gemini_skills gap analysis, 2026-08-05)
 
@@ -1142,7 +1170,7 @@ against a README.
   **`quotecheck` is deliberately NOT promoted** — its 2nd consumer is the knowledge-base
   ingestion tool, which does not exist. One prospective consumer is not evidence.
   canonizer adopting `textnorm` is that repo's commit; the promotion is what unblocks it.
-  - [ ] **When it is promoted, expect a signature change exegesis does not need.**
+  - [x] **When it is promoted, expect a signature change exegesis does not need.**
     `gnosis` (`~/Documents/git/gnosis/SPEC.md` §4.3) decided against a PDF extractor, so
     binary sources are admitted as `referenced` — hash and URI recorded, **no local text
     kept**. A caller in that state has no haystack, and passing an empty one reports every
@@ -1211,8 +1239,32 @@ against a README.
   src: `agent-red/qvr` `internal/security/{unicode,rules}.go` — its wider 15-category
   taxonomy (`prompt_injection`, `data_exfiltration`, `memory_poisoning`,
   `mcp_tool_poisoning`, …) is the roadmap, not the first slice.
-- [ ] **A "what did this change orphan?" gate over the related-skill edge graph — and the
-  applicability question it answers.** **Deferred 2026-08-23, and my sequencing reason for
+- [x] **A "what did this change orphan?" gate over the related-skill edge graph — and the
+  applicability question it answers.** *Sited elsewhere 2026-08-27; the siting question this
+  entry insisted on answering first is now answered, and the answer is "not here".*
+
+  **exegesis stays snapshot-shaped, and that is a property worth keeping rather than a
+  limitation to work around.** Re-verified: one `manifest.Build` call site, **zero**
+  `manifest.Diff`. Every exegesis command is answerable from one tree with no history, and a
+  baseline mode would cost that permanently for one check.
+
+  **The deciding argument was not that skillsaw has baselines but that it has already solved
+  this gate's sub-problems.** `skillsaw internal/edit/coupling.go` — `Uncoupled(base, cur)` —
+  carries two rules the orphan gate needs identically: *"a location absent from the baseline
+  is new and has nothing to be uncoupled from"* (a skill absent from the baseline cannot be
+  *newly* orphaned) and *"the result is advisory… a gate that fires on those teaches people
+  to bypass it"* (an intentional removal legitimately orphans something). Siting it there
+  inherits those decisions instead of re-deriving them, worse, here.
+
+  **The absolute half was refused, not deferred.** Shipping *"this skill has no inbound edges
+  at all"* here would collapse the `BaseAvailable` distinction this entry exists to protect —
+  "no baseline" is not "zero" — and it is, in this entry's own words, "the weaker check the
+  meter deliberately improves on". A knowingly-weaker check in one tool beside the real one
+  in another is how a family ends up with two answers to one question.
+
+  What leaves exegesis: `internal/related` moves to skillet, which is justified on its own
+  merits — it is stdlib-only pure body parsing with ten consumers here, and skillsaw cannot
+  reach it while it lives under `internal/`. Filed in skillet and skillsaw. Original entry: **Deferred 2026-08-23, and my sequencing reason for
   bundling it was wrong.** I had planned it alongside the two curated-tree entries above
   because all three read the same edge graph. *Same graph is not shared logic*: those two ask
   whether a named target is present, this one asks which node lost its last **inbound** edge
@@ -1903,3 +1955,128 @@ seven that destroys work rather than reshaping it. The decision record is in
       The refusal message should keep its counts — it reports how many cases sit under each
       key, which is more useful than a bare refusal — so take the count form if skillet
       provides one, and keep the "merge them by hand first" instruction either way.
+
+## Half the Declared Edges Are Unreadable (2026-08-27)
+
+Measured over `steve-skill-market` (233 skills) after `exegesis normalize` had already
+converted 117 of them: **the parser resolves 222 edges from 520 related-skill bullets.**
+
+- [x] **A name→slug lookup, so a bullet naming a skill by its display name resolves.**
+  BUILT 2026-08-27 as `exegesis normalize --resolve-titles`, and **measuring changed both
+  its size and its sequencing.**
+
+  **It is 40% of the problem, not the whole of it.** The 240 unreadable bullets decompose:
+  46 where the bold token is *already a slug*, 97 where it is a *kind* (`**composes_with**`),
+  and 97 display titles. The first two are parser tolerance filed in skillet.
+
+  **`name:` frontmatter is useless here** — all 233 skills have `name` equal to their slug,
+  so the only title a skill carries is its H1. Exact H1 matching resolves **53 of 97**;
+  the slug-derived `Title` resolves 38; both together 54, so the second index buys one
+  bullet and doubles the collision surface. H1 alone.
+
+  **Reporting only, and that is the finding.** Resolving the title is necessary but not
+  sufficient: those bullets also use an italic kind and an arrow separator, so substituting
+  the right slug leaves them just as unreadable. Confirmed by handing `Normalize` a bullet
+  whose bold token was **already a valid slug** and watching it pass through untouched. So
+  skillet's dialect work is a **prerequisite**, not a peer — the sequencing filed here had
+  it backwards, and rewriting waits on it.
+
+  Exact match only, ambiguity refused, cross-tree inline slugs declined. On the market
+  corpus: **97 title-named bullets — 53 resolved, 44 unknown, 0 ambiguous.**
+  The dialects `related` cannot read split four ways, and three are parser tolerance filed
+  in skillet (underscore kinds, italic kind markers, arrow separators). **This one is not
+  a parsing problem**: `- **Architect Elevator** — *depends-on* → …` names a skill by
+  title, and nothing in the document maps that title to `architect-elevator`. A parser
+  given one document cannot resolve it; only something that has walked the tree can.
+
+  That makes it exegesis's, since exegesis is what walks the tree — `index` already builds
+  the node set, and `verify` already resolves edge targets against it.
+
+  **The hazard to design against is a wrong match, not a missed one.** Slugifying a title
+  and hoping is how `Competing Consumers vs. Dispatcher` silently becomes an edge to
+  whatever `competing-consumers-vs-dispatcher` happens to be — or worse, to a near-miss.
+  An unresolved bullet reported is strictly better than a resolved bullet pointing
+  somewhere plausible and wrong, because the first is visible and the second is not.
+
+  Prerequisite for the orphan gate filed in skillsaw: an orphan count over 222 of 520
+  declared relationships would be confidently wrong.
+
+## Three Items the Kernel Bump Unblocked (2026-08-27)
+
+The bump to `skillet v0.26.0` took the shared `related` reader (promoted out of this repo),
+its three new bullet dialects, and `manifest.Skill.TestPromptsHash`. Three items were
+picked up on it. Two shipped; the third is a refusal with a measurement behind it.
+
+- [x] **`verify` wrote the test-prompts *path* and never their *hash*, so every manifest it
+      has ever written says the prompts are unchanged.** DONE 2026-08-27.
+      skillet added `TestPromptsHash` on 2026-08-22 for the prose↔test-prompts coupling
+      gate, the datum went there and the gate went to `skillsaw preflight`, and **the
+      producer was never wired** — which is the half that makes the other two useful.
+      **The failure is arithmetic, not a missing nicety.** `manifest.axes()` computes
+      `base.hasPrompts && base.prompts != cur.prompts`; with the hash empty on both sides
+      that is `"" != ""`, so the TestPrompts axis was **always false**. A `test-prompts.json`
+      could be rewritten between two exegesis manifests and `Diff` would place the skill in
+      `Unchanged`. Pinned by a test that does exactly that and **was watched failing first**
+      (`Changed:[] Unchanged:[skilla]`) before a line changed.
+      **The bytes are read here rather than through `testprompts.Load`,** which reads and
+      parses in one step and hands back no bytes. Hashing what was read rather than a
+      re-serialization of what was parsed is what lets a hash written here be compared with
+      one written by any other tool holding the same file — verified against an independent
+      `sha256`: `797c1047d5d33888` from both.
+      **Presence is now "the file was read", including when it then fails to parse.** skillet
+      documents an empty hash as *absent*, not *unknown*, and a malformed file is present and
+      can change. No verdict moved: `skillPasses` already required no problems. Splitting the
+      read from the parse also split one message in two — a file that is missing and a file
+      that is malformed are different repairs, and the old single line said neither.
+- [x] **`merge-status append --link` — the last unbuilt surface in the CLI.** DONE
+      2026-08-27. It returned a usage error saying the edge kind was an open decision; that
+      decision closed on 2026-08-08 and `related.SupersededBy` shipped with it, so the
+      message had outlived its reason.
+      **The sub-question resolved to composing `merged/<run>/<into>`, not to qualifying
+      `--into`.** The ledger is append-only, so entries already on disk carry a bare `into:`
+      and a qualified schema would put two meanings of one key inside an audit trail;
+      merge-skills documents the flag as a bare slug; and `merged/<run>/<slug>` is the form
+      all 26 real `superseded-by` bullets already write. The composition restates the corpus
+      rather than inventing a convention.
+      **`Entry.SupersededBy` returns the whole edge, not the target,** because "a
+      merged/partial entry implies a superseded-by edge to `merged/<run>/<into>`" is one
+      design decision, and kind, target and rationale composed in three places is the
+      information leakage this file keeps catching. Which states imply it is read from
+      `States()` — the vocabulary is not spelled a second time — so a state that later gains
+      `into` cannot leave the usage message naming the old set.
+      **The two records are idempotent in different ways, and that is not an
+      inconsistency:** a repeated append writes a second ledger entry, because an audit trail
+      records every run; the edge is keyed on (kind, target), because a pointer has one place
+      to point. A re-run says *already linked* rather than *linked*, since the second message
+      would claim an edge was added that was already there.
+      One read, both edits in memory, one atomic write — a failure cannot leave a ledger
+      claiming a merge that no edge points at. The unresolvable-target case **warns** rather
+      than failing, as `link` does and for its reason: the command is handed a skill
+      directory and infers the tree as its parent. Verified on a real skill: ledger appended,
+      bullet added to the existing canonical section, `lint` still ok, `merge-status check`
+      still accepts the ledger.
+- [ ] **`normalize` over the market corpus: measured, and NOT run — it deletes 27 bullets
+      with their rationales.** The `--resolve-titles --write` half of this was already done
+      (`8a916e5`, 53 titles across 17 skills). What v0.26.0 newly enables is the plain
+      rewrite, and measuring it on a copy is what stopped it.
+      **50 of 233 skills are non-canonical under the wider reader, and the 50 split cleanly
+      in two.**
+      **43 are safe:** only kind spellings change — `composes_with` → `composes-with`,
+      `combines` → `composes-with`, `compares` → `contrasts-with`. A word-multiset over just
+      those 43 is 118 tokens out, 117 in, **all of them structural, zero prose**.
+      **7 lose 27 bullets outright** and are left holding an **empty `## Related Skills`
+      heading**. All 7 are site-reliability-engineering skills carrying two related sections,
+      whose second section states the same five relationships as the first in **different and
+      longer words**. The wider reader now parses those `**depends_on**` bullets, dedup by
+      (kind, target) drops them as duplicates, and the rationale prose goes with them.
+      **This is a regression the bump created, and it inverts a documented guarantee.**
+      `normalize`'s rule was that it "substitutes only the lines it understands… so it cannot
+      discard content it did not parse", and the second-section merge was built to move those
+      bullets *verbatim* precisely because "their bullets carry the only rationale anyone
+      wrote". Under v0.26.0 the more the parser understands, the more prose `normalize`
+      deletes. **INDEX.md is byte-identical before and after — 357 edges, 73 graph notes, both
+      sides** — so the graph gains nothing from the run and the corpus loses paragraphs.
+      Fixing it belongs to `skillet/related.Normalize`, which owns both the dedup and the
+      section merge: a duplicate bullet whose rationale differs from the surviving one is not
+      a duplicate of anything a reader can recover, and an emptied section should not be left
+      behind. **Do not run `exegesis normalize` over `steve-skill-market` until that lands.**

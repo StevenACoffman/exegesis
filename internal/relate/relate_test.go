@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/StevenACoffman/exegesis/internal/relate"
-	"github.com/StevenACoffman/exegesis/internal/related"
+	"github.com/StevenACoffman/skillet/related"
 )
 
 func TestParseGroupsBySourceSorted(t *testing.T) {
