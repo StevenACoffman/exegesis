@@ -114,8 +114,10 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       rumdl issues, and that `exegesis lint` still passes on a skill carrying a ledger.
       The first two-level command in this CLI (`merge-status <append|check>`), matching the
       syntax merge-skills/SKILL.md already tells agents to run.
-      **`--link` is NOT built**: it writes a `superseded-by` bullet. The flag is accepted and
-      returns a usage error saying so, rather than failing as an unknown flag.
+      **`--link` is BUILT (2026-08-27)** — see *"The Last Unbuilt Surface"* below for what
+      shipped and which of the two spellings the sub-question was resolved to.
+      Original entry: **`--link` is NOT built**: it writes a `superseded-by` bullet. The flag
+      is accepted and returns a usage error saying so, rather than failing as an unknown flag.
       **Unblocked 2026-08-08** — the edge kind is decided (add it; see below). Building
       `--link` now waits only on the kind itself, plus one sub-question it owns: `--into` is
       documented as a bare merged-skill slug while the bullet needs a tree-qualified target,
@@ -399,10 +401,12 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       the gate did not start crying wolf about cross-tree targets. 25 raw bullets → 24 rewritten
       plus 1 in `effective-go-recipes/skills/`, whose skills sit two levels below the tree root
       and which converts when handed that path — a discovery-depth quirk, not a reader gap.
-      **Still open, and it belongs to `--link` rather than here:** `--into` is documented as a
-      bare merged-skill slug while the bullet needs a tree-qualified target, so either `--link`
-      composes `merged/<run>/<into>` from the ledger fields, or `--into` starts carrying the
-      qualified form and the ledger's `into:` becomes qualified with it.
+      **Settled 2026-08-27 with `--link`:** `--link` composes `merged/<run>/<into>` and the
+      ledger's `into:` stays a bare slug. See *"The Last Unbuilt Surface"* below.
+      Original entry: **Still open, and it belongs to `--link` rather than here:** `--into` is
+      documented as a bare merged-skill slug while the bullet needs a tree-qualified target,
+      so either `--link` composes `merged/<run>/<into>` from the ledger fields, or `--into`
+      starts carrying the qualified form and the ledger's `into:` becomes qualified with it.
 
       Noted while measuring, not part of this: **25 source skills carry
       `relation: superseded-by` in *frontmatter*** — the same lint-failing shape the merged
@@ -1996,3 +2000,83 @@ converted 117 of them: **the parser resolves 222 edges from 520 related-skill bu
 
   Prerequisite for the orphan gate filed in skillsaw: an orphan count over 222 of 520
   declared relationships would be confidently wrong.
+
+## Three Items the Kernel Bump Unblocked (2026-08-27)
+
+The bump to `skillet v0.26.0` took the shared `related` reader (promoted out of this repo),
+its three new bullet dialects, and `manifest.Skill.TestPromptsHash`. Three items were
+picked up on it. Two shipped; the third is a refusal with a measurement behind it.
+
+- [x] **`verify` wrote the test-prompts *path* and never their *hash*, so every manifest it
+      has ever written says the prompts are unchanged.** DONE 2026-08-27.
+      skillet added `TestPromptsHash` on 2026-08-22 for the prose↔test-prompts coupling
+      gate, the datum went there and the gate went to `skillsaw preflight`, and **the
+      producer was never wired** — which is the half that makes the other two useful.
+      **The failure is arithmetic, not a missing nicety.** `manifest.axes()` computes
+      `base.hasPrompts && base.prompts != cur.prompts`; with the hash empty on both sides
+      that is `"" != ""`, so the TestPrompts axis was **always false**. A `test-prompts.json`
+      could be rewritten between two exegesis manifests and `Diff` would place the skill in
+      `Unchanged`. Pinned by a test that does exactly that and **was watched failing first**
+      (`Changed:[] Unchanged:[skilla]`) before a line changed.
+      **The bytes are read here rather than through `testprompts.Load`,** which reads and
+      parses in one step and hands back no bytes. Hashing what was read rather than a
+      re-serialization of what was parsed is what lets a hash written here be compared with
+      one written by any other tool holding the same file — verified against an independent
+      `sha256`: `797c1047d5d33888` from both.
+      **Presence is now "the file was read", including when it then fails to parse.** skillet
+      documents an empty hash as *absent*, not *unknown*, and a malformed file is present and
+      can change. No verdict moved: `skillPasses` already required no problems. Splitting the
+      read from the parse also split one message in two — a file that is missing and a file
+      that is malformed are different repairs, and the old single line said neither.
+- [x] **`merge-status append --link` — the last unbuilt surface in the CLI.** DONE
+      2026-08-27. It returned a usage error saying the edge kind was an open decision; that
+      decision closed on 2026-08-08 and `related.SupersededBy` shipped with it, so the
+      message had outlived its reason.
+      **The sub-question resolved to composing `merged/<run>/<into>`, not to qualifying
+      `--into`.** The ledger is append-only, so entries already on disk carry a bare `into:`
+      and a qualified schema would put two meanings of one key inside an audit trail;
+      merge-skills documents the flag as a bare slug; and `merged/<run>/<slug>` is the form
+      all 26 real `superseded-by` bullets already write. The composition restates the corpus
+      rather than inventing a convention.
+      **`Entry.SupersededBy` returns the whole edge, not the target,** because "a
+      merged/partial entry implies a superseded-by edge to `merged/<run>/<into>`" is one
+      design decision, and kind, target and rationale composed in three places is the
+      information leakage this file keeps catching. Which states imply it is read from
+      `States()` — the vocabulary is not spelled a second time — so a state that later gains
+      `into` cannot leave the usage message naming the old set.
+      **The two records are idempotent in different ways, and that is not an
+      inconsistency:** a repeated append writes a second ledger entry, because an audit trail
+      records every run; the edge is keyed on (kind, target), because a pointer has one place
+      to point. A re-run says *already linked* rather than *linked*, since the second message
+      would claim an edge was added that was already there.
+      One read, both edits in memory, one atomic write — a failure cannot leave a ledger
+      claiming a merge that no edge points at. The unresolvable-target case **warns** rather
+      than failing, as `link` does and for its reason: the command is handed a skill
+      directory and infers the tree as its parent. Verified on a real skill: ledger appended,
+      bullet added to the existing canonical section, `lint` still ok, `merge-status check`
+      still accepts the ledger.
+- [ ] **`normalize` over the market corpus: measured, and NOT run — it deletes 27 bullets
+      with their rationales.** The `--resolve-titles --write` half of this was already done
+      (`8a916e5`, 53 titles across 17 skills). What v0.26.0 newly enables is the plain
+      rewrite, and measuring it on a copy is what stopped it.
+      **50 of 233 skills are non-canonical under the wider reader, and the 50 split cleanly
+      in two.**
+      **43 are safe:** only kind spellings change — `composes_with` → `composes-with`,
+      `combines` → `composes-with`, `compares` → `contrasts-with`. A word-multiset over just
+      those 43 is 118 tokens out, 117 in, **all of them structural, zero prose**.
+      **7 lose 27 bullets outright** and are left holding an **empty `## Related Skills`
+      heading**. All 7 are site-reliability-engineering skills carrying two related sections,
+      whose second section states the same five relationships as the first in **different and
+      longer words**. The wider reader now parses those `**depends_on**` bullets, dedup by
+      (kind, target) drops them as duplicates, and the rationale prose goes with them.
+      **This is a regression the bump created, and it inverts a documented guarantee.**
+      `normalize`'s rule was that it "substitutes only the lines it understands… so it cannot
+      discard content it did not parse", and the second-section merge was built to move those
+      bullets *verbatim* precisely because "their bullets carry the only rationale anyone
+      wrote". Under v0.26.0 the more the parser understands, the more prose `normalize`
+      deletes. **INDEX.md is byte-identical before and after — 357 edges, 73 graph notes, both
+      sides** — so the graph gains nothing from the run and the corpus loses paragraphs.
+      Fixing it belongs to `skillet/related.Normalize`, which owns both the dedup and the
+      section merge: a duplicate bullet whose rationale differs from the surviving one is not
+      a duplicate of anything a reader can recover, and an emptied section should not be left
+      behind. **Do not run `exegesis normalize` over `steve-skill-market` until that lands.**

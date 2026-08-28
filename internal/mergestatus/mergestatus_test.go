@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/StevenACoffman/exegesis/internal/mergestatus"
+	"github.com/StevenACoffman/skillet/related"
 )
 
 func TestValidateRequiresWhatTheStateNeeds(t *testing.T) {
@@ -254,5 +255,72 @@ func TestParseOfASkillWithNoLedger(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Errorf("want no entries, got %+v", entries)
+	}
+}
+
+func TestSupersededByComposesAQualifiedTarget(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		entry mergestatus.Entry
+		want  related.Edge
+	}{
+		"merged names the skill that replaced it": {
+			entry: mergestatus.Entry{Run: "all-books-v1", State: "merged", Into: "combined"},
+			want: related.Edge{
+				Kind:      related.SupersededBy,
+				Target:    "merged/all-books-v1/combined",
+				Rationale: "superseded by the all-books-v1 merge run",
+			},
+		},
+		"partial says so in the rationale": {
+			entry: mergestatus.Entry{
+				Run: "all-books-v1", State: "partial", Into: "combined",
+				Excluded: "the worked example",
+			},
+			want: related.Edge{
+				Kind:      related.SupersededBy,
+				Target:    "merged/all-books-v1/combined",
+				Rationale: "partially superseded by the all-books-v1 merge run",
+			},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			edge, ok := tc.entry.SupersededBy()
+			if !ok {
+				t.Fatalf("state %q must imply an edge", tc.entry.State)
+			}
+			if edge != tc.want {
+				t.Errorf("edge = %+v, want %+v", edge, tc.want)
+			}
+			// Unqualified, the bullet would name a skill in the source skill's own
+			// tree, where the merged skill is not and never will be.
+			if !related.Qualified(edge.Target) {
+				t.Errorf("target %q is not tree-qualified", edge.Target)
+			}
+		})
+	}
+}
+
+func TestSupersededByRefusesAStateThatMergesNothing(t *testing.T) {
+	t.Parallel()
+	cases := map[string]mergestatus.Entry{
+		"no-candidate": {Run: "all-books-v1", State: "no-candidate"},
+		"rejected, which has a pair but no merged skill": {
+			Run: "all-books-v1", State: "rejected", Pair: "a-b-01", Reason: "v1-failed",
+		},
+		"an unknown state, even carrying into": {
+			Run: "all-books-v1", State: "invented", Into: "combined",
+		},
+		"merged with an empty into": {Run: "all-books-v1", State: "merged"},
+	}
+	for name, entry := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if edge, ok := entry.SupersededBy(); ok {
+				t.Errorf("expected no edge, got %+v", edge)
+			}
+		})
 	}
 }
