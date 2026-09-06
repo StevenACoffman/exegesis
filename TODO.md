@@ -2216,3 +2216,56 @@ picked up on it. Two shipped; the third is a refusal with a measurement behind i
       because "canonical" now means *normalize has nothing safe left to do* rather than
       *every bullet is in canonical form*. The two readings only diverge on files carrying a
       kept duplicate, so the honest fix is a word in the report rather than a new check.
+
+______________________________________________________________________
+
+## A Clean Result and an Unexamined One Were the Same Sentence (2026-09-06)
+
+Found on 2026-09-03 while answering a question about stale `normalize --check` output,
+offered as a fix, and then left unfiled for three days — which is itself the finding worth
+recording: an unfiled defect is one nobody can prioritise, and this file's own count of
+remaining work did not include it.
+
+- [x] **`normalize --check` reported success when it examined nothing.** DONE 2026-09-06.
+      `report` branched on `changed == 0` and never asked whether anything was examined, so
+      `all 0 skill(s) already canonical` / exit 0 was the output for an empty tree —
+      the same sentence and the same exit code as a fully-examined clean tree.
+      **`skill.Discover` reads immediate subdirectories only and excludes the root**, so it
+      fired on the two easiest mistakes: naming a directory one level too high, or standing
+      inside a single skill. A CI job pointed at the wrong path passed having read nothing.
+      **It got worse the day the corpus went fully canonical.** Before that a clean run was
+      rare, so `all N canonical` was worth reading; afterwards the good outcome and the
+      misconfiguration print identically, and nothing but the count distinguishes them.
+      **The two modes now exit differently on an empty tree, deliberately.** `--check` fails
+      — it is a gate whose contract is *"this tree is canonical"*, and a tree that cannot be
+      examined does not meet it. The write mode does not: it is not a gate, and a sweep over
+      several trees legitimately meets empty ones (`books/fcis-go` has none built), so
+      failing it would break a working script to fix a gate bug. The trade is a silent false
+      pass for a loud false failure, which is the right direction — one is visible and one
+      command from diagnosis, the other shipped for months unnoticed.
+      The message names the discovery rule as well as the path, because the rule is the trap.
+      **`--resolve-titles` was left alone**: `resolved 0 title(s) across 0 skill(s)` states
+      its counts and claims no verdict, so it is not this defect.
+- [ ] **`verify` writes `structure_verified=true` for a tree it never examined.** Found
+      2026-09-06 while measuring the entry above; the same defect, in the command where it
+      costs more.
+      ```
+      $ exegesis verify <empty-dir>
+      wrote .../skills-manifest.json (structure_verified=true)
+      exit=0
+      ```
+      **This is worse than the `normalize` case in kind, not just degree.** `normalize`
+      printed a misleading sentence to a terminal; `verify` writes a **machine-readable
+      claim** that the tree was verified, into the artifact `skillsaw` reads. A consumer has
+      no way to tell that manifest from one covering a tree that genuinely passed, because
+      the two are byte-identical apart from an empty `skills` array — and a reader checking
+      `structure_verified` does not look at the array length.
+      Not fixed with the entry above because it is a separate path with its own decision:
+      an empty tree plainly should not be `structure_verified`, but changing that changes an
+      artifact other tools consume, and the manifest may deserve to record *how many skills
+      were examined* rather than only a boolean. That is a wire-format question and belongs
+      to whoever owns `skillet/manifest`.
+      **`index` is already honest here** — it writes `_No skills found._` into INDEX.md —
+      and `duplicates` reports an empty tree explicitly. So two of four discovery commands
+      got this right and two did not, which is the argument for deciding it once rather than
+      per command.
