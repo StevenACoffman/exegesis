@@ -33,6 +33,7 @@ go install github.com/StevenACoffman/exegesis@latest
 | `merge-index`   | Regenerate a merged tree's cross-book provenance `INDEX.md`.                                                                                                                                |
 | `merge-migrate` | Move a merged skill's provenance from frontmatter into the body.                                                                                                                            |
 | `a2check`       | Report the language signals a merged skill adds to its sources'.                                                                                                                            |
+| `duplicates`    | Report skills that exist in more than one tree, and whether the copies diverged.                                                                                                            |
 
 Run `exegesis <SUBCOMMAND> -h` for the flags each one takes.
 

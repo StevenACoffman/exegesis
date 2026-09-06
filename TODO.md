@@ -61,16 +61,16 @@ gates it) **and** optional per-case `checks` (skillsaw's `judge` consumes them):
 
 ## Remaining pipeline (future passes, out of this pass's scope)
 
-### The merge-skills CLI surface (documented, not built — audited 2026-08-06)
+### The merge-skills CLI surface (built — audited 2026-08-06, closed 2026-08-27)
 
 `~/Documents/agent-orange/steve-skill-market/skills/merge-skills/SKILL.md` instructs agents
-to run four exegesis subcommands, three flags and one edge kind. As of 2026-08-08
-`quotecheck`, `merge-status` and `tests --merge`/`--migrate` exist; `merge-index`,
-`a2check`, `verify --merge`, `merge-status --link` and the `superseded-by` edge kind still
-do not, so an agent following that skill still fails at those steps. Both open *decisions*
-behind them are now settled (the provenance model, and adding the edge kind) — what is left
-is construction. The skill is otherwise left as-is; it reads as the spec for this work,
-with its frontmatter-key claim corrected 2026-08-08.
+to run four exegesis subcommands, three flags and one edge kind. **As of 2026-08-27 every
+one of them exists**, so an agent following that skill no longer fails at any step: the
+2026-08-08 audit's outstanding list was `merge-index`, `a2check`, `verify --merge`,
+`merge-status --link` and the `superseded-by` edge kind, and the entries below record each
+being built. What remains open in this section is one advisory flag pair on `verify --merge`
+that the merge-skills doc does not ask for. The skill is otherwise left as-is; it reads as
+the spec for this work, with its frontmatter-key claim corrected 2026-08-08.
 
 Nothing else in the exegesis pipeline depends on these — book2skill's flow is unaffected.
 
@@ -312,8 +312,64 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       unknown-type complaints, `--merge` drops them to 0 and reports `MERGE_OVERVIEW.md: ok`,
       then surfaces the genuine empty-`expected` content defects (tree fixes, as predicted).
       **Deferred (not the measured blocker):** `--source-book A,B` (the `a2check` attribution
-      advisory across merged skills) and `--strict`. Both need each merged skill's source
-      provenance wired in; filed as follow-up rather than gold-plated onto this pass.
+      advisory across merged skills) and `--strict`, filed as follow-up rather than
+      gold-plated onto this pass. Now its own item directly below, where a count of what is
+      left can see it.
+- [x] **`exegesis verify --merge --source-book A,B` and `--strict`** — the `a2check`
+      attribution advisory, run across a whole merged tree instead of one skill at a time.
+      DONE 2026-09-04. **Attributed all 27 merged skills in `all-books-v1`, 0 unchecked**;
+      `--strict` exits 1 naming **11** that add fewer than `a2check.MinNew` signals — six
+      of them adding none at all, which is the finding the flag exists to surface.
+      **The entry's own headline number was right and its reasoning was not, and building
+      it is what showed the difference.** "Invert the `superseded-by` edges" resolves 27 of
+      27 only if *both* spellings are read. Measured: **8 merged skills are named only by a
+      `## Related skills` bullet, 8 only by a `related_skills:` frontmatter entry**, 11 by
+      both — and `skillet` parses no frontmatter `related_skills:` at all. A bullet-only
+      reader resolves **19 of 27** and reports *no sources* for the rest, which scores every
+      signal in them as new. That is the direction that **passes**, so the cheap version of
+      this gate would have failed open on a third of the tree while looking green.
+      **Two more fail-open paths were found the same way, by running it on the real corpus
+      rather than on the fixture.** `hashimoto/table-driven-named-cases` mixes bare slugs
+      and mappings in one `related_skills:` list, so decoding into a slice of structs failed
+      on the first scalar and silently yielded nothing for the whole block. And
+      `books/effective-go-recipes` nests its skills one level down, so naming the book
+      directory discovers zero — indistinguishable, from inside the reader, from
+      `books/fcis-go`, which genuinely has none built. The first is a parser bug and is
+      fixed; the second is not the library's call to make, so `Collect` returns the empty
+      trees and `verify` reports them, leaving the judgement where the context is.
+      **Built as `internal/provenance`,** whose two exported functions are `Targets` (pure:
+      one skill's declared supersessions, both spellings, deduplicated) and `Collect` (the
+      walk). It stays in `internal/` until a second consumer appears, which is the rule
+      `speclint` and `redlines` were promoted under. The `Index` is keyed by the merged
+      **slug**, not the qualified target, because the on-disk tree path and the target's
+      prefix need not agree and requiring them to would make the gate depend on the caller's
+      working directory.
+      **A merged skill with no resolved sources is reported `not checked`, never passed** —
+      the fail-open hazard above, made visible in the one place it could hide.
+      Promoted from prose to a checkbox 2026-09-03: it had been recorded only inside the
+      completed `verify --merge` entry above, which is invisible to every count of the
+      remaining work, and this file's own convention is that an open item is a checkbox.
+      **The reason given for deferring it is no longer true, and measuring it is what
+      showed that.** The entry said both flags "need each merged skill's source provenance
+      wired in". That provenance is already on disk, in the direction nobody had read it
+      from: every source skill that was merged carries a `superseded-by` edge naming
+      `merged/<run>/<slug>`, so **inverting those edges yields merged skill -> its sources**.
+      Measured over `books/`: **27 of 27 skills in `merged/all-books-v1` resolve to at least
+      one source, 0 uncovered** — 25 with two sources and 2 with one
+      (`go-constructor-option-pattern-selection`, `go-test-state-driven-table`), which is the
+      shape merge-skills produces. The edges are written in two spellings and both must be
+      read: the `- **superseded-by**: <target>` bullet and the `related_skills:` frontmatter
+      entry carrying `relation: superseded-by`.
+      **So the work is an inversion and a flag, not a new record.** `--source-book` names the
+      source trees whose skills carry those edges, since a merged tree cannot see them; the
+      map is built once per run; `internal/a2check` already does the counting and
+      `cmd/a2check` already has `--strict` with `checker.MinNew`, so `verify` composes what
+      exists rather than reimplementing it.
+      **Do not add a provenance field to `skills-manifest.json` for this.** The derived map
+      is a projection of edges that are already the audit trail, and a second copy is the
+      information leakage this file keeps catching. The manifest-origin item in §Agent-Red
+      Survey is a *different* gap — it is about skills arriving from outside the tree, which
+      have no source-side edge to invert — and neither item unblocks the other.
 - [x] **`exegesis normalize` and `rumdl` fought over the `## Related skills` heading.** DONE (2026-08-07).
       Found while deciding the ledger's heading case (2026-08-07). `related.sectionHeading`
       is lowercase `## Related skills` and `normalize` rewrites the heading to it;
@@ -1748,7 +1804,31 @@ check.
       that records which targets are out of tree. Related to the one-tree-many-manifests
       entry below, which is about copies of one tree rather than about a subset of one.
 
-- [ ] **`index` / `merge-index` should have an opinion about one tree, many manifests.**
+- [x] **`index` / `merge-index` should have an opinion about one tree, many manifests.**
+      DONE 2026-09-04 as **`exegesis duplicates TREE TREE [TREE...]`**, not as a flag on
+      `merge-index`. **Measured on this machine the moment it ran: 293 skills live in more
+      than one of the four trees and 223 of them have diverged.**
+      **The home moved, deliberately, and this entry is the record of why.** `merge-index`
+      takes a *merged tree* and reads each skill's `## Provenance` section to rebuild that
+      tree's INDEX.md. The cross-tree check reads *any* trees and has no use for a merged
+      one, so an `--across` flag would have left `merge-index`'s own positional meaningless
+      — a second mode wearing the first one's arguments, which is the Special-General
+      Mixture the go-advice names. A variadic command says what it does.
+      **Duplication is reported; only divergence fails.** A deliberate install target is not
+      a defect, and a command that failed on one would be useless on exactly the machine it
+      was written for — the same reporting/failing split `checkGraph` already draws. Fewer
+      than two trees is a usage error, because a one-tree run could only ever report
+      nothing, and shipping a check that cannot fire is what killed this item's original
+      in-tree half.
+      **Comparison is `skill.Hash`, which is `identity.Hash` over the whole SKILL.md** — the
+      same value `verify` writes into `skills-manifest.json`, so a verdict here and a
+      manifest entry there mean the same thing by construction rather than by coincidence.
+      `Diverged()` is a method over the copies' hashes rather than a stored bool, so it
+      cannot disagree with them.
+      **The report prints each copy's hash beside its tree,** which turned out to matter
+      more than the verdict: on the real trees it shows at a glance that `~/.forge/skills`
+      is the outlier in most findings, holding a different pipeline generation entirely
+      rather than a stale copy of the same one.
   **RE-SCOPED 2026-08-23: the duplicate-slug check is vacuous *by construction*, and belongs
   to `merge-index` rather than `index`.** `cmd/verify/verify.go` sets
   `slug: filepath.Base(dir)` — a slug **is** a directory basename, and one directory cannot
@@ -2055,8 +2135,20 @@ picked up on it. Two shipped; the third is a refusal with a measurement behind i
       directory and infers the tree as its parent. Verified on a real skill: ledger appended,
       bullet added to the existing canonical section, `lint` still ok, `merge-status check`
       still accepts the ledger.
-- [ ] **`normalize` over the market corpus: measured, and NOT run — it deletes 27 bullets
-      with their rationales.** The `--resolve-titles --write` half of this was already done
+- [x] **`normalize` over the market corpus: measured, and NOT run — it deletes 27 bullets
+      with their rationales.** RESOLVED 2026-09-03 by the bump to `skillet v0.27.0`, which
+      fixed it in the package that owned it; the refusal below stood for exactly as long as
+      it should have. **Re-measured on a copy at v0.27.0: 50 of 233 still rewrite, 0 bullets
+      and 0 rationales are deleted, and INDEX.md is byte-identical at 357 edges** — the graph
+      claim held, and the prose loss is gone. `related.canonicalize` now keeps a bullet
+      verbatim when rewriting it would delete a rationale no other bullet wrote
+      (`rationales.enter` returns a `lossy` flag alongside the fresh edges), and
+      `TestNormalizeKeepsARestatementInOtherWords` pins this corpus's exact shape by name.
+      Rationales are compared **exactly**, not by similarity, on the stated asymmetry that a
+      deleted line is invisible afterwards while a kept duplicate is plain to any reader.
+      **`exegesis normalize` over `steve-skill-market` is therefore unblocked.** What it now
+      produces for the 7 skills is one merged section holding both wordings — see the content
+      item below, which is a corpus edit and not a tool change. Original entry: The `--resolve-titles --write` half of this was already done
       (`8a916e5`, 53 titles across 17 skills). What v0.26.0 newly enables is the plain
       rewrite, and measuring it on a copy is what stopped it.
       **50 of 233 skills are non-canonical under the wider reader, and the 50 split cleanly
@@ -2080,3 +2172,47 @@ picked up on it. Two shipped; the third is a refusal with a measurement behind i
       section merge: a duplicate bullet whose rationale differs from the surviving one is not
       a duplicate of anything a reader can recover, and an emptied section should not be left
       behind. **Do not run `exegesis normalize` over `steve-skill-market` until that lands.**
+- [x] **The 7 two-section SRE skills state 27 relationships twice, and only a human can
+      collapse them.** DONE 2026-09-03: **27 of 27 merged, 0 promoted, 0 orphans** across the
+      7 files in `steve-skill-market/skills`. The longer rationale moved onto the canonical
+      bullet and the legacy line went, which is the repair this entry specified.
+      **The structural half was the tool's and the judgement half was not, so they were done
+      by different hands.** `related.Normalize` at v0.27.0 produced the single merged section;
+      the only thing written by hand on top of it was choosing the longer of two wordings —
+      the judgement `rationales.enter` refuses to make, kept out of the tool for the reason
+      that refusal exists.
+      **Verified against the four things that could have gone wrong**, not just re-read: all
+      27 legacy rationales are present verbatim afterwards; 0 un-twinned canonical rationales
+      were dropped (a bullet whose words existed nowhere else); every non-bullet line in all 7
+      files is byte-identical; and INDEX.md is **byte-identical at 357 edges**, which was the
+      prediction — the graph already held all 27 edges, so only the prose was ever at stake.
+      `normalize --check` now reports **43 of 233** rather than 50, the 7 having gone
+      canonical, and all 7 lint clean under the market repo's `rumdl` config. The empty
+      rationales fixed themselves on the way past: the 7 bullets that ended at a bare dash left
+      a trailing space (MD009), and a bullet that gained words no longer ends there.
+      Original entry: Fallout of the item above, and the reason `normalize` cannot finish
+      the job: with the deletion bug fixed, normalizing those 7 skills merges the two
+      sections and keeps **both** wordings, so each file ends up declaring the same
+      relationship on a canonical bullet and again on a legacy `- **depends_on**: …` one.
+      **Measured on a normalized copy 2026-09-03: 27 legacy bullets across the 7 skills, and
+      all 27 duplicate a canonical bullet — 0 are legacy-only.** That is why INDEX.md does
+      not move: the graph already has every one of these edges, and what is at stake is only
+      which words a reader gets.
+      **The 27 split by how much judgment the merge takes.** 7 have a canonical twin whose
+      rationale is **empty** (`blameless-postmortem-process` 3, `fifty-percent-engineering-time-cap`
+      4) — the legacy prose moves in and nothing is weighed. The other 20 have a twin whose
+      rationale is a **shorter parenthetical saying the same thing**: canonical *"(Examine
+      step requires golden signal telemetry)"* against legacy *"the Examine phase requires
+      golden signal telemetry (latency, traffic, errors, saturation) to generate valid
+      hypotheses"*. In every pair sampled the legacy wording is the strictly more informative
+      one, so the repair is to take the longer rationale onto the canonical bullet and delete
+      the legacy line.
+      **That is a corpus edit, and `normalize` is right to refuse it.** "Prefer the longer
+      rationale" is a judgement about meaning, and a tool that acted on it would be deleting
+      a line on a heuristic — the exact trade `rationales.enter` was written to avoid. Doing
+      it by hand is a one-time pass over 7 files.
+      **A smaller residue worth recording, not fixing yet:** after that pass `normalize
+      --check` reports the tree fully canonical while those legacy bullets are still in it,
+      because "canonical" now means *normalize has nothing safe left to do* rather than
+      *every bullet is in canonical form*. The two readings only diverge on files carrying a
+      kept duplicate, so the honest fix is a word in the report rather than a new check.

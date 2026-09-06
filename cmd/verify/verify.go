@@ -13,9 +13,11 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/exegesis/cmd/root"
+	"github.com/StevenACoffman/exegesis/internal/a2check"
 	"github.com/StevenACoffman/exegesis/internal/indexgen"
 	lintlib "github.com/StevenACoffman/exegesis/internal/lint"
 	"github.com/StevenACoffman/exegesis/internal/overview"
+	"github.com/StevenACoffman/exegesis/internal/provenance"
 	"github.com/StevenACoffman/exegesis/internal/registry"
 	"github.com/StevenACoffman/exegesis/internal/testcomp"
 	"github.com/StevenACoffman/skillet/finding"
@@ -26,16 +28,55 @@ import (
 	"github.com/StevenACoffman/skillet/testprompts"
 )
 
+// longHelp is the verify command's help text. It lives here rather than inline in New
+// so that New reads as what it is -- a flag-binding and registration sequence -- instead
+// of one screen of prose with a constructor around it.
+const longHelp = `Run the Stage-0 overview gate (if TREE/BOOK_OVERVIEW.md exists), then lint
+and the test-prompts composition gate for every skill under TREE (default "."):
+each immediate subdirectory containing a SKILL.md.
+
+The skills gate also checks the relationship graph across the tree: every
+` + "`## Related skills`" + ` edge must point at a skill that exists, because
+` + "`index`" + ` silently drops an edge whose target it cannot find.
+
+--gates selects a subset: "overview" runs only the Stage-0 BOOK_OVERVIEW.md gate
+(and requires the file to exist); "skills" runs only the per-skill gates and the
+graph check. The default (no --gates) runs both. Only a run that includes the
+skills gate writes skills-manifest.json.
+
+With --registry, also enforce per-skill word budgets and required sections and
+check the discovered skills against the expected catalog.
+
+With --merge, verify a merged tree: gate each skill's test-prompts under the
+merged composition (which adds the prefer_merged_over_source category and raises
+the edge_case floor) instead of the standard one, and require MERGE_OVERVIEW.md
+at the tree root. Without it, a merged skill's prefer_merged_over_source cases
+are rejected as an unknown type.
+
+With --source-book, additionally report for each merged skill how many A2 language
+signals it states that none of the sources it replaced state. The sources are found by
+inverting the ` + "`superseded-by`" + ` edges the source skills declare about themselves, read from
+both the related-skills bullet and the ` + "`related_skills:`" + ` frontmatter. Advisory by
+default; with --strict a merged skill that adds too few signals fails the tree.
+
+On completion a skills run writes skills-manifest.json for the skillsaw-skill
+hand-off, and exits non-zero if any gate failed. structure_verified reflects
+whether every gate passed; each entry carries the sha256 of SKILL.md and, where
+there is one, of test-prompts.json — the second so a later diff of two manifests
+can tell a skill whose prompts were rewritten from one whose prose alone moved.`
+
 // Config holds the verify command configuration.
 type Config struct {
 	*root.Config
-	Manifest string
-	Registry string
-	Gates    string
-	Check    string
-	Merge    bool
-	Flags    *ff.FlagSet
-	Command  *ff.Command
+	Manifest   string
+	Registry   string
+	Gates      string
+	Check      string
+	SourceBook string
+	Merge      bool
+	Strict     bool
+	Flags      *ff.FlagSet
+	Command    *ff.Command
 }
 
 // skillReport is one skill's gate outcome.
@@ -92,39 +133,22 @@ func New(parent *root.Config) *Config {
 	)
 	cfg.Flags.BoolVar(&cfg.Merge, 0, "merge", "verify a merged tree: gate test-prompts under "+
 		"the merged composition and require MERGE_OVERVIEW.md")
+	cfg.Flags.StringVar(
+		&cfg.SourceBook,
+		0,
+		"source-book",
+		"",
+		"with --merge: comma-separated source trees, to report which language signals each merged skill adds",
+	)
+	cfg.Flags.BoolVar(&cfg.Strict, 0, "strict",
+		"with --source-book: fail the tree when a merged skill adds too few signals")
 	cfg.Command = &ff.Command{
 		Name:      "verify",
 		Usage:     "exegesis verify [--gates LIST] [--check redlines] [--manifest PATH] [--registry PATH] [TREE]",
 		ShortHelp: "run every gate over a skill tree and emit skills-manifest.json",
-		LongHelp: `Run the Stage-0 overview gate (if TREE/BOOK_OVERVIEW.md exists), then lint
-and the test-prompts composition gate for every skill under TREE (default "."):
-each immediate subdirectory containing a SKILL.md.
-
-The skills gate also checks the relationship graph across the tree: every
-` + "`## Related skills`" + ` edge must point at a skill that exists, because
-` + "`index`" + ` silently drops an edge whose target it cannot find.
-
---gates selects a subset: "overview" runs only the Stage-0 BOOK_OVERVIEW.md gate
-(and requires the file to exist); "skills" runs only the per-skill gates and the
-graph check. The default (no --gates) runs both. Only a run that includes the
-skills gate writes skills-manifest.json.
-
-With --registry, also enforce per-skill word budgets and required sections and
-check the discovered skills against the expected catalog.
-
-With --merge, verify a merged tree: gate each skill's test-prompts under the
-merged composition (which adds the prefer_merged_over_source category and raises
-the edge_case floor) instead of the standard one, and require MERGE_OVERVIEW.md
-at the tree root. Without it, a merged skill's prefer_merged_over_source cases
-are rejected as an unknown type.
-
-On completion a skills run writes skills-manifest.json for the skillsaw-skill
-hand-off, and exits non-zero if any gate failed. structure_verified reflects
-whether every gate passed; each entry carries the sha256 of SKILL.md and, where
-there is one, of test-prompts.json — the second so a later diff of two manifests
-can tell a skill whose prompts were rewritten from one whose prose alone moved.`,
-		Flags: cfg.Flags,
-		Exec:  cfg.exec,
+		LongHelp:  longHelp,
+		Flags:     cfg.Flags,
+		Exec:      cfg.exec,
 	}
 	parent.Command.Subcommands = append(parent.Command.Subcommands, cfg.Command)
 	return &cfg
@@ -139,6 +163,9 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	default:
 		return root.Usagef("verify: expected at most one tree path")
 	}
+	if err := cfg.checkFlagCombination(); err != nil {
+		return err
+	}
 	gates, err := parseGates(cfg.Gates)
 	if err != nil {
 		return fmt.Errorf("verify: %w", err)
@@ -151,6 +178,35 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 		return root.ExitError(1)
 	}
 	return nil
+}
+
+// checkFlagCombination rejects the flag pairings that would silently do nothing.
+//
+// Both are refused rather than ignored for the reason `normalize --write` is: a flag
+// whose whole meaning is "also do this" and which then does not is a no-op the caller
+// discovers from absent output, if at all.
+func (cfg *Config) checkFlagCombination() error {
+	if cfg.SourceBook != "" && !cfg.Merge {
+		return root.Usagef("verify: --source-book applies to --merge; " +
+			"attribution compares a merged skill against the sources it replaced")
+	}
+	if cfg.Strict && cfg.SourceBook == "" {
+		return root.Usagef("verify: --strict applies to --source-book; " +
+			"without sources there is no attribution to enforce")
+	}
+	return nil
+}
+
+// sourceBooks splits --source-book into tree paths, dropping empties so a stray comma
+// does not become a lookup of "".
+func (cfg *Config) sourceBooks() []string {
+	var trees []string
+	for _, t := range strings.Split(cfg.SourceBook, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			trees = append(trees, t)
+		}
+	}
+	return trees
 }
 
 // run executes the selected gates and reports whether all of them passed. The
@@ -220,12 +276,104 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	// unverified.
 	incomplete := checkGraph(tree)
 	incomplete = append(incomplete, checkClosure(tree, reports)...)
-	verified := overviewPass && len(treeProblems) == 0 && allPass(reports)
+	attributed, err := cfg.attribution(reports)
+	if err != nil {
+		return false, err
+	}
+	verified := overviewPass && len(treeProblems) == 0 && allPass(reports) && attributed
 	if err := cfg.writeManifest(tree, reports, verified); err != nil {
 		return false, err
 	}
 	cfg.renderSkills(append(treeProblems, incomplete...), reports)
 	return verified, nil
+}
+
+// attribution reports which language signals each merged skill states that none of the
+// sources it replaced do, and reports whether the tree may still pass.
+//
+// Advisory unless --strict: the counting is structural, so two signals worded
+// differently and meaning the same thing count as two here and one to a reader. A
+// passing count is evidence, not a verdict, which is why the default only says what it
+// found. Without --source-book nothing runs and the tree passes on the other gates
+// alone.
+//
+// Ensures: the result is true whenever --strict was not given.
+func (cfg *Config) attribution(reports []skillReport) (bool, error) {
+	trees := cfg.sourceBooks()
+	if len(trees) == 0 {
+		return true, nil
+	}
+	idx, empty, err := provenance.Collect(trees)
+	if err != nil {
+		return false, fmt.Errorf("attribution: %w", err)
+	}
+	for _, tree := range empty {
+		// Named but contributing nothing. Reported because it is far more often a path
+		// that missed a nesting level than a book with no skills built, and the two are
+		// indistinguishable from here.
+		_, _ = fmt.Fprintf(cfg.Stdout,
+			"a2: %s: no skills found, so no source was read from it\n", tree)
+	}
+	pass := true
+	for i := range reports {
+		if !cfg.attributeOne(&reports[i], idx) {
+			pass = false
+		}
+	}
+	return pass, nil
+}
+
+// attributeOne reports one merged skill's added signals, returning whether it may pass.
+func (cfg *Config) attributeOne(r *skillReport, idx provenance.Index) bool {
+	sources := idx[r.slug]
+	if len(sources) == 0 {
+		// Never silently a pass. A merged skill nothing claims to have been replaced by
+		// has no sources to be sharper than, so every signal in it would count as new --
+		// the direction that passes. Saying so is the only honest report.
+		_, _ = fmt.Fprintf(cfg.Stdout,
+			"%s: a2: not checked: no source skill declares it superseded them\n", r.slug)
+		return true
+	}
+	added, err := addedSignals(r.dir, sources)
+	if err != nil {
+		_, _ = fmt.Fprintf(cfg.Stdout, "%s: a2: not checked: %v\n", r.slug, err)
+		return true
+	}
+	if !cfg.Strict || len(added) >= a2check.MinNew {
+		_, _ = fmt.Fprintf(cfg.Stdout, "%s: a2: %d new signal(s) over %d source(s)\n",
+			r.slug, len(added), len(sources))
+		return true
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout,
+		"%s: a2: %d new signal(s) over %d source(s), want at least %d\n",
+		r.slug, len(added), len(sources), a2check.MinNew)
+	return false
+}
+
+// addedSignals returns the A2 language signals dir states that no source states.
+func addedSignals(dir string, sources []provenance.Source) ([]string, error) {
+	merged, err := signalsOf(dir)
+	if err != nil {
+		return nil, err
+	}
+	sourceSignals := make([][]string, 0, len(sources))
+	for _, s := range sources {
+		sig, sigErr := signalsOf(s.Dir)
+		if sigErr != nil {
+			return nil, sigErr
+		}
+		sourceSignals = append(sourceSignals, sig)
+	}
+	return a2check.New(merged, sourceSignals), nil
+}
+
+// signalsOf reads one skill's A2 language signals.
+func signalsOf(dir string) ([]string, error) {
+	s, err := skill.Load(dir)
+	if err != nil {
+		return nil, fmt.Errorf("load %s: %w", dir, err)
+	}
+	return a2check.Signals(s.Body), nil
 }
 
 // parseGates turns the --gates value into a gateSet. An empty value selects all
