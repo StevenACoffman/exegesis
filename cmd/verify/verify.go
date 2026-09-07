@@ -285,7 +285,38 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 		return false, err
 	}
 	cfg.renderSkills(append(treeProblems, incomplete...), reports)
-	return verified, nil
+	return verified && cfg.reportExamined(tree, len(reports)), nil
+}
+
+// reportExamined states how many skills the gates ran over, and reports whether a verdict
+// can rest on it.
+//
+// A tree holding no skills passed every gate vacuously and exited 0, so a run pointed at the
+// wrong directory was indistinguishable from a clean one -- skill.Discover reads immediate
+// subdirectories only and excludes the root, which makes that the two easiest mistakes to
+// make. `normalize --check` took the same call on 2026-09-06.
+//
+// **verify fails on it where normalize's write mode does not, and the difference is that
+// verify is only ever a gate.** normalize has a write mode whose job is to rewrite what
+// needs rewriting, so finding nothing is a legitimate no-op there and a sweep over several
+// trees really does meet empty ones. verify has no such counterpart: its whole contract is
+// "this tree is verified", and a tree it could not examine does not satisfy it.
+//
+// **StructureVerified is deliberately left alone.** Forcing it false here would overload one
+// value with *gates failed* and *no gates ran*, which is the conflation Manifest.Examined
+// exists to remove. The count says how much was examined; the boolean says whether what ran
+// passed; a consumer now has both.
+//
+// Ensures: true whenever any skill was examined; it writes one line either way.
+func (cfg *Config) reportExamined(tree string, examined int) bool {
+	if examined > 0 {
+		_, _ = fmt.Fprintf(cfg.Stdout, "verify: examined %d skill(s)\n", examined)
+		return true
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout,
+		"verify: no skills found under %s, so nothing was verified "+
+			"(a skill is an immediate subdirectory holding a SKILL.md)\n", tree)
+	return false
 }
 
 // attribution reports which language signals each merged skill states that none of the
@@ -666,6 +697,17 @@ func (cfg *Config) writeManifest(tree string, reports []skillReport, verified bo
 	// by this flag. Forgetting it fails closed -- the consumer reads the graph as
 	// unavailable and declines -- which is why it sits beside the loop that fills Edges.
 	m.EdgesRecorded = true
+	// Set from the reports rather than from the entries just built. They are the same
+	// number today because verifyOne produces one report per discovered directory and
+	// writeManifest lists every one -- but they answer different questions, and this field
+	// answers the second: entries is what the manifest *lists*, reports is what verify
+	// *examined*. A future producer that lists less than it read would make the two differ,
+	// and the count that would then be wrong is the one taken from the list.
+	//
+	// Without it StructureVerified was the only verdict, and it says "no gate failed" --
+	// which is vacuously true of a tree holding no skills, so a manifest covering nothing
+	// was indistinguishable from one covering a tree that passed.
+	m.Examined = len(reports)
 	b, err := m.Marshal()
 	if err != nil {
 		return fmt.Errorf("build manifest: %w", err)

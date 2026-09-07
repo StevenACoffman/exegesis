@@ -2246,7 +2246,50 @@ remaining work did not include it.
       The message names the discovery rule as well as the path, because the rule is the trap.
       **`--resolve-titles` was left alone**: `resolved 0 title(s) across 0 skill(s)` states
       its counts and claims no verdict, so it is not this defect.
-- [ ] **`verify` writes `structure_verified=true` for a tree it never examined.** Found
+- [x] **`verify` writes `structure_verified=true` for a tree it never examined.** DONE
+  2026-09-06 against `skillet v0.30.0`, in the two halves the decisions called for.
+  **The artifact half:** `m.Examined` is set beside `m.EdgesRecorded`, from `len(reports)`
+  rather than `len(entries)`. They are equal today, and they answer different questions --
+  entries is what the manifest *lists*, reports is what verify *examined* -- so the count
+  that would be wrong under any future divergence is the one taken from the list.
+  **The verdict half:** `verify` now exits non-zero on a tree holding no skills, the same
+  call `normalize --check` took on 2026-09-06. It is cleaner here because `verify` has no
+  write-mode counterpart, so the asymmetry that split normalize's two modes does not arise:
+  verify is only ever a gate, and a tree it could not examine does not satisfy "this tree is
+  verified".
+  **`structure_verified` is deliberately unchanged.** Forcing it false for an empty tree
+  would overload one value with *gates failed* and *no gates ran* -- the conflation the count
+  exists to remove. The count says how much was examined; the boolean says whether what ran
+  passed; a consumer now has both, which is what makes the pair readable.
+  Verified on the real corpus: `examined: 233, skills: 233`, no regression.
+  **The consumer half is still open and is skillsaw's** -- `verified` gates on the boolean
+  alone, so it still passes a manifest covering nothing. Filed there. Original entry:
+      **DECIDED 2026-09-06; the exegesis-local half is ready to build and the artifact half
+      is deferred to the skillet batch.** Recorded here because this is where the defect was
+      found; the manifest half is filed in `skillet/TODO.md` and the consumer half in
+      `skillsaw/TODO.md`.
+      **Decision 1 — the verdict carries a count of how many skills were examined**, not a
+      second boolean and not a re-used `structure_verified=false`. False would overload one
+      value with *gates failed* and *no gates ran*, which is the conflation `Drift` was built
+      to undo for anchors.
+      **Decision 2 — `verify` exits non-zero on a tree holding no skills.** This half needs
+      no schema change and no coordination: it is the same call `normalize --check` took on
+      2026-09-06, and it is cleaner here because `verify` has no write-mode counterpart, so
+      the asymmetry that split normalize's two modes does not arise. **Buildable now.**
+      **Decision 3 — the manifest change ships with the pending skillet batch**, alongside
+      the `Limitations:` header and per-rule `checks`. Two of those bump `FormatVersion`
+      already, and this and `semantic_verification` answer the same question — *what did this
+      run actually do?* — closely enough that solving them apart would produce two
+      overlapping ways to say "not checked".
+      **On versioning, the premise checked out differently than expected: the manifest schema
+      carries no version field.** `manifest.Manifest` is
+      `{tool, tree, structure_verified, skills, edges_recorded}` — verified against skillet
+      v0.28.0. So an additive count needs no schema bump, and skillet's established pattern
+      for exactly this is `EdgesRecorded`: an `omitempty` field whose absence has a
+      documented, fail-closed reading rather than a version number to test. Whether the
+      manifest *should* become versioned is a real question and a separate one; it is filed
+      in skillet rather than assumed here.
+      Original entry: Found
       2026-09-06 while measuring the entry above; the same defect, in the command where it
       costs more.
       ```
