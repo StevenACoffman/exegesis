@@ -1405,7 +1405,15 @@ an earlier README-level pass did not survive and are retracted below.
   adopt. **Worth propagating instead: canonizer has no equivalent** — it parses rulesets and
   never calls `ruleset.Render`, so a stored ruleset can be parseable yet non-canonical.
   Filed in that repo.
-- [x] **OKF as the frontmatter contract `lint` gates.** CLOSED 2026-08-23: **no.** The
+- [x] **OKF as the frontmatter contract `lint` gates.** CLOSED 2026-08-23: **no.**
+  **Unchanged by skillet's 2026-09-07 decision, and worth saying so.** Skillet promoted the
+  verification *record* (`Verification{By, At}`) after two repos were found to have
+  hand-written it; the `Generated`/`Verified` block is still not promoted. Neither touches
+  this entry's question, which was whether a `SKILL.md` should answer to OKF at all — the
+  answer was no, because a skill answers to agentskills.io and a concept document answers to
+  OKF. exegesis stores no trust metadata and derives no tier, so it is not a consumer of the
+  promoted record either. Recorded here only so a reader who sees the promotion does not
+  read it as reopening this. Original entry: The
   trigger fired and the answer it produced is negative.
   **The trigger fired.** This entry said *"not scheduled: this waits on the knowledge-base
   decision"*, and gnosis exists and has adopted OKF — `internal/okflog` and
@@ -1654,7 +1662,61 @@ check.
   **The predicate detects shared vocabulary; the defect is restated procedure.** Those are
   different things, and the gap is not closable by tightening a threshold. This is the dim-9
   pattern a third time: a mechanical form of good advice that penalises the behaviour the
-  advice wants. The measured cases are now the worked example in the README's
+  advice wants.
+
+  **FOUR MORE PREDICATES MEASURED 2026-09-06, all failing the same way.** Recorded because
+  the entry above says the string comparison is refuted without saying what else is, and the
+  next person will otherwise re-derive these. Over the same 233 skills:
+
+  | candidate                                               | hits | outcome                                                                                                      |
+  | ------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------ |
+  | sequencing markers (`first`/`then`/`step N`)            | 31   | false: "check **then** act", "profile-**then**-tune", "scope-**first**" are domain terms and quoted triggers |
+  | a stated step count ("two reviews")                     | 0    | vacuous on this corpus                                                                                       |
+  | description restates ≥2 of the body's **ordered** steps | 2    | false: quoted trigger phrases and the names of patterns being compared                                       |
+  | description carries an imperative-led list              | 0    | 46 descriptions carry lists; **43** are trigger-signal lists and none are agent instructions                 |
+
+  **Every lexical predicate rediscovers one fact: a description and its body legitimately
+  share domain vocabulary, because they are about the same subject.** The refuted section-title
+  check measured overlap; so do all four of these. That is now five attempts converging on the
+  same wall, which is evidence about the approach rather than about any one predicate.
+
+  **The reframing that follows, and it is the useful part.** The defect is not overlap, it is
+  **sufficiency**: the description is complete enough to act on, so the agent acts on it. That
+  is why `superpowers` observed *the better the paraphrase the more reliably the body is
+  skipped* — the harm scales with the description's quality, and no overlap metric can see
+  that. A predicate over the description alone is also looking in the wrong place, since
+  sufficiency is a relation between the description and what the body additionally requires.
+
+  **Two implementations that measure sufficiency, in the order they should be tried.**
+
+  **(a) Gate the description's *form*, not its content — cheap, and available now.** Stop
+  trying to recognise procedure and assert the shape a trigger-only description has. The
+  corpus makes this tractable: **43 of the 46 list-carrying descriptions frame their items as
+  situations** — a quoted phrase, `When …`, `If …`, or a noun phrase naming a state — and none
+  frame them as instructions to the agent. That convention is already obeyed and was never
+  written down. The check is that a list item may not open with a bare imperative directed at
+  the agent: a closed test against a small vocabulary of openers, not an open-ended hunt for
+  process, and **calibrated to fire zero times on today's corpus** — a ratchet protecting an
+  existing property rather than a new opinion flagging 13 good skills.
+  Two honest limits: it only sees list-shaped descriptions (46 of 233), and a zero-hit check
+  needs a planted-defect control to prove it can fire at all, which is `gate.SelfTest`'s
+  pattern and the trap this file has caught twice.
+
+  **(b) A description-only differential case, scaffolded into `test-prompts.json`.** The rule
+  was *discovered* behaviourally — an agent ran one review where the body specified two — so
+  reproduce that shape rather than proxy it. `tests --scaffold` already writes cases and
+  derives `checks`; add one whose prompt is **the description alone**, with a check asserting
+  the reply omits something the body requires. An agent that produces a complete-looking plan
+  from the description by itself has demonstrated the defect, which is the definition tested
+  directly rather than approximated.
+  It fits the charter rather than straining it: exegesis stays deterministic, writing the case
+  and gating the composition, and the agent runs it — judgment where the family already puts
+  judgment. The cost is that it needs a per-skill assertion someone authors, so it cannot
+  sweep the corpus unattended; the entry's own framing, that this rule's justification is
+  measured behaviour, is the argument for paying it.
+
+  **What not to try: a sixth lexical variant.** The four above plus the original are the
+  evidence. The measured cases are now the worked example in the README's
   contract-versus-prose note, so the next person reaching for this rule meets the evidence
   before the idea. **Still open as a question, closed as a string comparison.** Original entry:
   `checkRedlines` #5 already tests that a description *states a trigger condition*
