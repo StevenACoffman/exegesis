@@ -66,7 +66,7 @@ func TestManifestSeesTestPromptsChange(t *testing.T) {
 
 	cur := readManifest(t, tree, filepath.Join(tree, "cur.json"))
 
-	delta := manifest.Diff(base, cur)
+	delta := manifest.Diff(&base, &cur)
 	if len(delta.Changed) != 1 || delta.Changed[0] != "skilla" {
 		t.Fatalf("expected skilla to be the one changed location, got %+v", delta)
 	}

@@ -97,7 +97,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 			changed++
 		}
 	}
-	return cfg.report(changed, len(dirs))
+	return cfg.report(tree, changed, len(dirs))
 }
 
 // normalizeOne rewrites one skill's related section, reporting whether it changed.
@@ -122,9 +122,41 @@ func (cfg *Config) normalizeOne(dir string) (bool, error) {
 	return true, nil
 }
 
-// report writes the summary line and, under --check, signals staleness with a
-// non-zero exit so the command can gate CI.
-func (cfg *Config) report(changed, total int) error {
+// report writes the summary line for a run over tree and, under --check, signals staleness
+// with a non-zero exit so the command can gate CI.
+//
+// A tree holding no skills is its own outcome rather than a clean one. Until 2026-09-06
+// this printed "all 0 skill(s) already canonical" and exited 0, so a run that examined
+// nothing was indistinguishable from one that examined everything and found it well --
+// same sentence, same exit code. skill.Discover reads immediate subdirectories only and
+// excludes the root, so that fired on the two easiest mistakes: naming a directory one
+// level too high, or standing inside a single skill. It became more dangerous once the
+// corpus went fully canonical, because the good outcome and the misconfiguration started
+// printing the same thing.
+//
+// **The two modes exit differently on an empty tree, and the asymmetry is the point.**
+// --check is a gate whose contract is "this tree is canonical", and a tree that cannot be
+// examined does not meet it, so it fails -- the fail-closed direction this family states
+// elsewhere as "nobody looked is not the claim that this is fine". The write mode is not a
+// gate: its job is to rewrite what needs rewriting, and finding nothing to rewrite is a
+// legitimate no-op. A sweep over several trees really does meet empty ones -- books/fcis-go
+// has no skills built -- and failing it would break a working script to fix a gate bug.
+//
+// The message names the discovery rule as well as the path, because the rule is the trap.
+//
+// Ensures: a non-nil error exactly when --check is set and either the tree held no skills
+//
+//	or some skill was not canonical.
+func (cfg *Config) report(tree string, changed, total int) error {
+	if total == 0 {
+		_, _ = fmt.Fprintf(cfg.Stdout,
+			"no skills found under %s; nothing was checked "+
+				"(a skill is an immediate subdirectory holding a SKILL.md)\n", tree)
+		if cfg.Check {
+			return root.ExitError(1)
+		}
+		return nil
+	}
 	if cfg.Check {
 		if changed == 0 {
 			_, _ = fmt.Fprintf(cfg.Stdout, "all %d skill(s) already canonical\n", total)

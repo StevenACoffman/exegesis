@@ -18,6 +18,7 @@ import (
 
 	"github.com/StevenACoffman/exegesis/cmd/a2check"
 	"github.com/StevenACoffman/exegesis/cmd/distill"
+	"github.com/StevenACoffman/exegesis/cmd/duplicates"
 	"github.com/StevenACoffman/exegesis/cmd/index"
 	"github.com/StevenACoffman/exegesis/cmd/link"
 	"github.com/StevenACoffman/exegesis/cmd/lint"
@@ -59,6 +60,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	mergeindex.New(r)
 	mergemigrate.New(r)
 	a2check.New(r)
+	duplicates.New(r)
 	// register new commands here
 
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("EXEGESIS")); err != nil {
