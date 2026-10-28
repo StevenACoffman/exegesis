@@ -2324,8 +2324,13 @@ remaining work did not include it.
   exists to remove. The count says how much was examined; the boolean says whether what ran
   passed; a consumer now has both, which is what makes the pair readable.
   Verified on the real corpus: `examined: 233, skills: 233`, no regression.
-  **The consumer half is still open and is skillsaw's** -- `verified` gates on the boolean
-  alone, so it still passes a manifest covering nothing. Filed there. Original entry:
+  **The consumer half is DONE (2026-10-28) in skillsaw#22.** `skillsaw verified` now
+  refuses a manifest covering no skills, and says the tree was not examined rather than
+  found defective. It still honours a manifest written before `examined` existed, reporting
+  it as `examined=unknown`. Verified end to end against this repo: an empty tree is refused
+  by both tools, and a one-skill tree passes both. skillsaw-skill's Phase 0 step, which told
+  the agent to "fix structure first" on any refusal, is corrected in steve-skill-market#6.
+  Original entry:
       **DECIDED 2026-09-06; the exegesis-local half is ready to build and the artifact half
       is deferred to the skillet batch.** Recorded here because this is where the defect was
       found; the manifest half is filed in `skillet/TODO.md` and the consumer half in
