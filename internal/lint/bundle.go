@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/fs"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -18,8 +19,9 @@ type bundledFile struct {
 }
 
 // CheckBundle returns the findings that need the skill's directory rather than its
-// SKILL.md alone: body links that resolve to nothing and hidden characters in every bundled
-// text file (both errors; SKILL.md's own hidden characters are Check's).
+// SKILL.md alone: body links that resolve to nothing (error), hidden characters in every
+// bundled text file (error; SKILL.md's own are Check's), bundled files nothing references
+// (warning), and paths into another skill's directory (warning).
 //
 // It is separate from Check so Check stays pure over a loaded skill. The directory comes
 // in as an fs.FS rooted at the skill, so the commands pass os.DirFS(dir) and tests pass
@@ -42,7 +44,10 @@ func CheckBundle(fsys fs.FS, s *skill.Skill) []finding.Diagnostic {
 	for _, f := range files {
 		ds = append(ds, hiddenFindings(f.path, f.text)...)
 	}
-	return ds
+	ds = append(ds, unreferencedFindings(s.Body, files)...)
+	self := filepath.Base(s.Dir)
+	all := append([]bundledFile{{path: skill.FileName, text: s.Body}}, files...)
+	return append(ds, crossSkillFindings(self, all)...)
 }
 
 // bundledFiles returns every text file in the skill other than SKILL.md, in walk order.
