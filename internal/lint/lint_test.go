@@ -353,6 +353,34 @@ func TestCheckStillReportsNameMismatchWhenFrontmatterParsed(t *testing.T) {
 	}
 }
 
+func TestCheckRejectsDynamicContext(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		raw       string
+		wantCount int
+	}{
+		"inline command":        {raw: "## Current State\n!`git status --short`\n", wantCount: 1},
+		"bang fence":            {raw: "```!\ngit log -1\n```\n", wantCount: 1},
+		"documented in a fence": {raw: "```markdown\nRun !`date`\n```\n"},
+		"literal bang as prose": {raw: "Prefix `!` to negate a glob.\n"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := &skill.Skill{Dir: "/x/s", Name: "s", Description: "d", Raw: tc.raw}
+			got := findingsContaining(lint.Check(s, lint.Options{}), "dynamic context")
+			if len(got) != tc.wantCount {
+				t.Fatalf("got %v, want %d finding(s)", got, tc.wantCount)
+			}
+			for _, d := range got {
+				if !d.Severity.Blocking() {
+					t.Errorf("dynamic context must block, got %v", d)
+				}
+			}
+		})
+	}
+}
+
 // findingsContaining keeps the diagnostics whose message contains sub.
 func findingsContaining(ds []finding.Diagnostic, sub string) []finding.Diagnostic {
 	var out []finding.Diagnostic

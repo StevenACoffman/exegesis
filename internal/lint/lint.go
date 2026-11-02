@@ -82,8 +82,19 @@ func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
 	ds = append(ds, checkBody(s.Body)...)
 	ds = append(ds, checkBudget(s, opts)...)
 	ds = append(ds, checkSize(s, opts.MaxLines, opts.LineCeilings)...)
-	for _, h := range neutrality.Scan([]neutrality.NamedFile{{Name: "SKILL.md", Content: s.Raw}}) {
+	files := []neutrality.NamedFile{{Name: skill.FileName, Content: s.Raw}}
+	for _, h := range neutrality.Scan(files) {
 		ds = append(ds, diagf("runtime-bound wording at SKILL.md:%d: %q", h.Line, h.Text))
+	}
+	// An error, as F23 recommends, now that M1 moved the market's 22 uses into bundled
+	// scripts. Claude Code runs these commands before the model reads the skill, and every
+	// other client shows the raw syntax, so a skill using them is bound to one runtime as
+	// surely as one that says so in words.
+	for _, h := range neutrality.DynamicContext(files) {
+		ds = append(ds, diagf(
+			"runtime-bound dynamic context at SKILL.md:%d: %q — Claude Code runs it on load and "+
+				"other clients show it raw; move the command into a bundled script the body names",
+			h.Line, h.Text))
 	}
 	// Not opt-in, unlike the tiers below. An invisible character is a tampering
 	// vector rather than a matter of quality, and a security check behind a flag is
