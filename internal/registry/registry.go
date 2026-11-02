@@ -18,6 +18,11 @@ type Registry struct {
 	MaxBodyWords        int      `json:"max_body_words,omitempty"`
 	MaxDescriptionWords int      `json:"max_description_words,omitempty"`
 	RequiredSections    []string `json:"required_sections,omitempty"`
+
+	// LineCeilings lists the skills allowed over the SKILL.md line gate, by folder, each
+	// with the line count it may not grow past. It is a ratchet: entries may only be
+	// lowered or removed, and lint says when one can be.
+	LineCeilings map[string]int `json:"line_ceilings,omitempty"`
 }
 
 // Load reads and parses a registry JSON file.

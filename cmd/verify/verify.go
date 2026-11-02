@@ -47,6 +47,10 @@ skills gate writes skills-manifest.json.
 With --registry, also enforce per-skill word budgets and required sections and
 check the discovered skills against the expected catalog.
 
+A SKILL.md over --max-lines (default 500, agentskills.io's recommendation) fails its
+skill unless the registry's line_ceilings records it as a known exception; an
+exception may not grow past its ceiling, and is reminded to lower it when it shrinks.
+
 With --merge, verify a merged tree: gate each skill's test-prompts under the
 merged composition (which adds the prefer_merged_over_source category and raises
 the edge_case floor) instead of the standard one, and require MERGE_OVERVIEW.md
@@ -73,6 +77,7 @@ type Config struct {
 	Gates      string
 	Check      string
 	SourceBook string
+	MaxLines   int
 	Merge      bool
 	Strict     bool
 	Flags      *ff.FlagSet
@@ -142,6 +147,9 @@ func New(parent *root.Config) *Config {
 	)
 	cfg.Flags.BoolVar(&cfg.Strict, 0, "strict",
 		"with --source-book: fail the tree when a merged skill adds too few signals")
+	cfg.Flags.IntVar(&cfg.MaxLines, 0, "max-lines", lintlib.DefaultMaxLines,
+		"fail a skill whose SKILL.md exceeds this many lines, agentskills.io's recommendation "+
+			"(0 = unlimited; registry line_ceilings lists known exceptions)")
 	cfg.Command = &ff.Command{
 		Name:      "verify",
 		Usage:     "exegesis verify [--gates LIST] [--check redlines] [--manifest PATH] [--registry PATH] [TREE]",
@@ -262,11 +270,12 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	}
 	opts.Redlines = checks.Redlines
 	opts.SkillLens = checks.SkillLens
-	reports, err := verifySkills(tree, opts, testcomp.For(cfg.Merge))
+	opts.MaxLines = cfg.MaxLines
+	reports, skipped, err := verifySkills(tree, opts, testcomp.For(cfg.Merge))
 	if err != nil {
 		return false, err
 	}
-	treeProblems := checkCatalog(expected, reports)
+	treeProblems := append(skipped, checkCatalog(expected, reports)...)
 	// Graph incompleteness is reported and does not fail the tree. A curated tree is
 	// deliberately a subset, so a depends-on target absent from it is provenance rather
 	// than a defect -- and nothing here can tell an archived skill from a typo, since
@@ -276,6 +285,7 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	// unverified.
 	incomplete := checkGraph(tree)
 	incomplete = append(incomplete, checkClosure(tree, reports)...)
+	incomplete = append(incomplete, checkDevArtifacts(reports)...)
 	attributed, err := cfg.attribution(reports)
 	if err != nil {
 		return false, err
@@ -445,6 +455,7 @@ func (cfg *Config) loadRegistry() (lintlib.Options, []string, error) {
 		MaxBodyWords:        r.MaxBodyWords,
 		MaxDescriptionWords: r.MaxDescriptionWords,
 		RequiredSections:    r.RequiredSections,
+		LineCeilings:        r.LineCeilings,
 	}, r.ExpectedSkills, nil
 }
 
@@ -489,7 +500,7 @@ func checkCatalog(expected []string, reports []skillReport) []string {
 // checkClosure reports immediate subdirectories of tree that hold no SKILL.md, so a
 // reader can tell a lost skill from a deliberate working directory.
 //
-// It derives the set by **subtracting what Discover returned** rather than asking each
+// It derives the set by **subtracting what DiscoverTree returned** rather than asking each
 // directory whether it holds a SKILL.md. Re-asking would put the rule that defines a
 // skill directory in two modules, and the drift would be silent: skillet could widen
 // what counts and this would keep reporting the old complement. Subtraction encodes
@@ -608,20 +619,31 @@ func checkMergeOverview(tree string) []string {
 	return nil
 }
 
+// verifySkills gates every skill DiscoverTree finds under tree, and returns the entries
+// discovery could not judge as tree problems.
+//
+// DiscoverTree rather than Discover, because this is the command that judges the tree:
+// an entry that escapes it (a symbolic link out of a packaged tree, which would not
+// survive an installer's copy) or cannot be read is a defect of the tree, and Discover
+// would let it read as absent.
 func verifySkills(
 	tree string,
 	opts lintlib.Options,
 	comp testprompts.Composition,
-) ([]skillReport, error) {
-	dirs, err := skill.Discover(tree)
+) ([]skillReport, []string, error) {
+	found, err := skill.DiscoverTree(tree)
 	if err != nil {
-		return nil, fmt.Errorf("discover skills: %w", err)
+		return nil, nil, fmt.Errorf("discover skills: %w", err)
 	}
-	reports := make([]skillReport, 0, len(dirs))
-	for _, dir := range dirs {
+	reports := make([]skillReport, 0, len(found.Dirs))
+	for _, dir := range found.Dirs {
 		reports = append(reports, verifyOne(dir, opts, comp))
 	}
-	return reports, nil
+	skipped := make([]string, 0, len(found.Skipped))
+	for _, sk := range found.Skipped {
+		skipped = append(skipped, fmt.Sprintf("skipped: %s: %s", sk.Path, sk.Reason))
+	}
+	return reports, skipped, nil
 }
 
 func verifyOne(dir string, opts lintlib.Options, comp testprompts.Composition) skillReport {
@@ -633,6 +655,7 @@ func verifyOne(dir string, opts lintlib.Options, comp testprompts.Composition) s
 		// was read, not because the document said nothing.
 		r.edges = related.EdgeMap(related.ParseSection(s.Body))
 		r.findings = lintlib.Check(s, opts)
+		r.findings = append(r.findings, lintlib.CheckBundle(os.DirFS(dir), s)...)
 	} else {
 		r.findings = []finding.Diagnostic{{Severity: finding.SeverityError, Message: err.Error()}}
 	}

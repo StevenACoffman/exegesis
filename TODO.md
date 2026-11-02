@@ -2379,3 +2379,31 @@ remaining work did not include it.
       and `duplicates` reports an empty tree explicitly. So two of four discovery commands
       got this right and two did not, which is the argument for deciding it once rather than
       per command.
+
+## Consumer Half of the `stbenjam` and Agent Plugins Review (2026-11-02)
+
+Recommendations E1, E2, E3 and E5 of `agent-orange/write/stbenjam_improvements.md`, built
+against skillet's kernel half (K1–K8). E4, the plugin-package gate, is deferred (D13).
+
+- [x] **Kernel bump.** `speclint` now owns the whole name rule, so the local
+  name/folder check is deleted. Unknown keys arrive as warnings (D2) and only errors
+  block. `verify` uses `skill.DiscoverTree` and fails the tree on every skipped entry
+  (an escaping link or an unreadable one).
+- [x] **E5 + D7.** `SKILL.md` over `--max-lines` (default `speclint.SkillMaxLines`, 500,
+  counted by `speclint.Lines`) is an error in `lint` and `verify`. The registry's
+  `line_ceilings` lists known exceptions by folder: an exception may not grow past its
+  ceiling, and is told to lower or remove it when it shrinks.
+- [x] **E1.** Body links that resolve to nothing in the skill are errors, via
+  `skill.BrokenLinks`.
+- [x] **E2.** `internal/lint/hidden.go` is a message adapter over `skillet/hidden`, so
+  emoji, Persian text, the three flag emoji and a leading byte-order mark pass. Every
+  bundled text file is scanned, not only `SKILL.md`.
+- [x] **E3.** Advisory: a bundled file nothing references from `SKILL.md` (followed
+  transitively through the markdown it references) by link or code span, and a path into
+  another skill's directory. The family's own files are excluded.
+- [x] **D8.4.** The deferred half of the closure check: development files inside a
+  skill (`test-results.md`, `merge-audit.md`, `TODO.md`, `GITHUB_REPO.md`,
+  `*-workspace/`) are reported, not failed.
+- [x] **Flip dynamic context to an error.** Done 2026-11-02, after M1 left 0 uses in the market. `neutrality.DynamicContext` hits were warnings
+  while the market's 22 skills still use `` !`cmd` ``. Once M1 moves those commands into
+  bundled scripts, make the finding an error in `internal/lint/lint.go`, as F23 asks.

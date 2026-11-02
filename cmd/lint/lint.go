@@ -26,6 +26,7 @@ type Config struct {
 	Check        string
 	MaxBodyWords int
 	MaxDescWords int
+	MaxLines     int
 	Flags        *ff.FlagSet
 	Command      *ff.Command
 }
@@ -50,6 +51,9 @@ func New(parent *root.Config) *Config {
 		"fail if the description exceeds this many words (0 = unlimited; overrides registry)")
 	cfg.Flags.StringVar(&cfg.Check, 0, "check", "",
 		"extra checks: redlines (Quality Red Lines), skilllens (SkillLens quality tier), or all")
+	cfg.Flags.IntVar(&cfg.MaxLines, 0, "max-lines", lintlib.DefaultMaxLines,
+		"fail if SKILL.md exceeds this many lines, agentskills.io's recommendation "+
+			"(0 = unlimited; registry line_ceilings lists known exceptions)")
 	cfg.Command = &ff.Command{
 		Name:      "lint",
 		Usage:     "exegesis lint [--json] [--check redlines] [--registry PATH] SKILL_DIR ...",
@@ -57,7 +61,9 @@ func New(parent *root.Config) *Config {
 		LongHelp: `Validate each SKILL_DIR against the agentskills.io spec plus book2skill's
 body red-lines and the runtime-neutrality gate. With --registry (or the
 --max-*-words flags) it also enforces per-skill word budgets and required
-sections. With --check redlines (or --check all) it enforces the mechanical
+sections. SKILL.md over --max-lines (default 500) is an error unless the
+registry's line_ceilings records it as a known exception, which may only shrink.
+With --check redlines (or --check all) it enforces the mechanical
 Quality Red Lines: the six RIA segments (R/I/A1/A2/E/B), quotations within the
 150-word limit, a description that states a trigger condition, and a present
 test-prompts.json. Exits non-zero if any skill has an error-severity finding.`,
@@ -83,6 +89,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 			return fmt.Errorf("lint: %w", loadErr)
 		}
 		findings := lintlib.Check(s, opts)
+		findings = append(findings, lintlib.CheckBundle(os.DirFS(dir), s)...)
 		if opts.Redlines {
 			findings = append(findings, missingTestPrompts(dir)...)
 		}
@@ -110,8 +117,10 @@ func (cfg *Config) options() (lintlib.Options, error) {
 			MaxBodyWords:        r.MaxBodyWords,
 			MaxDescriptionWords: r.MaxDescriptionWords,
 			RequiredSections:    r.RequiredSections,
+			LineCeilings:        r.LineCeilings,
 		}
 	}
+	opts.MaxLines = cfg.MaxLines
 	if cfg.MaxBodyWords > 0 {
 		opts.MaxBodyWords = cfg.MaxBodyWords
 	}

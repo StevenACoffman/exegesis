@@ -6,8 +6,9 @@
 // Two families of rule live in skillet so exegesis and skillsaw share one source of
 // truth rather than drifting: the agentskills.io frontmatter rules (speclint) and
 // the Quality Red Lines (redlines). The checks below are the ones that remain
-// exegesis-specific: folder match, body links, runtime neutrality, hidden
-// characters, and the opt-in registry budgets.
+// exegesis-specific: body links, runtime neutrality, hidden characters, and the
+// opt-in registry budgets. speclint's findings include warnings (unknown keys, a
+// description over the family's length target); only errors block.
 //
 // Before adding a rule here, read "speclint Is the Spec, Not the Style Guide" in the
 // README: speclint carries the agentskills.io contract, the same vendor also publishes
@@ -18,7 +19,6 @@ package lint
 
 import (
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -34,14 +34,21 @@ var (
 	reInlineCode = regexp.MustCompile("`[^`]*`")
 )
 
-// Options are the opt-in, registry/flag-driven budget and structure checks. The
-// zero value enforces nothing, so existing trees keep passing.
+// Options are the registry/flag-driven budget and structure checks. The zero value
+// enforces nothing; the commands turn the line gate on by default.
 type Options struct {
 	MaxBodyWords        int      // 0 = unlimited
 	MaxDescriptionWords int      // 0 = unlimited
 	RequiredSections    []string // heading substrings that must be present and non-empty
-	Redlines            bool     // opt-in: enforce book2skill's mechanical Quality Red Lines
-	SkillLens           bool     // opt-in: the SkillLens quality tier (skillet/skilllens)
+
+	// MaxLines is the SKILL.md line gate; 0 disables it. The commands default it to
+	// DefaultMaxLines, so it is on unless a caller turns it off.
+	MaxLines int
+	// LineCeilings records the known exceptions to MaxLines by skill folder, each with the
+	// line count it may not grow past (the registry's line_ceilings).
+	LineCeilings map[string]int
+	Redlines     bool // opt-in: enforce book2skill's mechanical Quality Red Lines
+	SkillLens    bool // opt-in: the SkillLens quality tier (skillet/skilllens)
 }
 
 // Checks says which opt-in tiers a --check value enables. Each tier is on its own
@@ -64,34 +71,37 @@ type Checks struct {
 //	(disallowed key, name/dir mismatch, over-long or empty or markup-laden
 //	description, escaping/absolute body links, runtime binding); it is pure.
 func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
-	ds := speclint.Frontmatter(s)
-	// Only compare the name when there was a name to read. A frontmatter block that
-	// failed to parse leaves s.Name empty, and reporting that as a mismatch states a
-	// consequence of the YAML error as though it were a second, independent defect —
-	// speclint has already named the real one.
+	// speclint carries the whole spec name rule, the folder match included, and reports a
+	// frontmatter parse failure as itself rather than as a missing name.
 	//
-	// The body checks below are deliberately still run: splitFrontmatter separates the
-	// block before the parse is attempted, so s.Body is intact and its defects are
-	// real. Suppressing them would make the author fix the YAML and lint again just to
-	// be told what could have been said the first time.
-	if s.FrontmatterErr == nil {
-		if want := filepath.Base(s.Dir); s.Name != want {
-			ds = append(ds, diagf("frontmatter: name %q != folder %q", s.Name, want))
-		}
-	}
+	// The body checks below are deliberately still run when the frontmatter did not
+	// parse: frontmatter.Split separates the block before the parse is attempted, so
+	// s.Body is intact and its defects are real. Suppressing them would make the author
+	// fix the YAML and lint again just to be told what could have been said the first time.
+	ds := speclint.Frontmatter(s)
 	ds = append(ds, checkBody(s.Body)...)
 	ds = append(ds, checkBudget(s, opts)...)
-	for _, h := range neutrality.Scan([]neutrality.NamedFile{{Name: "SKILL.md", Content: s.Raw}}) {
+	ds = append(ds, checkSize(s, opts.MaxLines, opts.LineCeilings)...)
+	files := []neutrality.NamedFile{{Name: skill.FileName, Content: s.Raw}}
+	for _, h := range neutrality.Scan(files) {
 		ds = append(ds, diagf("runtime-bound wording at SKILL.md:%d: %q", h.Line, h.Text))
+	}
+	// An error, as F23 recommends, now that M1 moved the market's 22 uses into bundled
+	// scripts. Claude Code runs these commands before the model reads the skill, and every
+	// other client shows the raw syntax, so a skill using them is bound to one runtime as
+	// surely as one that says so in words.
+	for _, h := range neutrality.DynamicContext(files) {
+		ds = append(ds, diagf(
+			"runtime-bound dynamic context at SKILL.md:%d: %q — Claude Code runs it on load and "+
+				"other clients show it raw; move the command into a bundled script the body names",
+			h.Line, h.Text))
 	}
 	// Not opt-in, unlike the tiers below. An invisible character is a tampering
 	// vector rather than a matter of quality, and a security check behind a flag is
 	// off in exactly the run that needed it. Affordable as a hard gate only because
 	// the predicate is an exact codepoint test — see hidden.go on why the confusable
 	// heuristic is excluded rather than demoted to a warning.
-	for _, h := range scanHidden(s.Raw) {
-		ds = append(ds, diag(h.message()))
-	}
+	ds = append(ds, hiddenFindings(skill.FileName, s.Raw)...)
 	if opts.Redlines {
 		ds = append(ds, redlines.Check(s)...)
 	}
