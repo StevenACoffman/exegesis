@@ -31,8 +31,8 @@ func TestCheckFlagsEachHiddenClass(t *testing.T) {
 		{"zero width joiner", "a\u200Db", "hidden zero-width character at SKILL.md:1 (U+200D)"},
 		{"word joiner", "a\u2060b", "hidden zero-width character at SKILL.md:1 (U+2060)"},
 		{"bom", "a\uFEFFb", "hidden zero-width character at SKILL.md:1 (U+FEFF)"},
-		{"bidi override", "a\u202Eb", "hidden bidirectional override at SKILL.md:1 (U+202E)"},
-		{"bidi isolate", "a\u2066b", "hidden bidirectional override at SKILL.md:1 (U+2066)"},
+		{"bidi override", "a\u202Eb", "hidden bidirectional control at SKILL.md:1 (U+202E)"},
+		{"bidi isolate", "a\u2066b", "hidden bidirectional control at SKILL.md:1 (U+2066)"},
 		{"tag character", "a\U000E0041b", "hidden Unicode tag character at SKILL.md:1 (U+E0041)"},
 	}
 	for _, tc := range cases {
@@ -100,5 +100,28 @@ func TestCheckReportsOneHitPerClassPerLine(t *testing.T) {
 	}
 	if zw != 1 || bidi != 1 {
 		t.Errorf("expected 1 zero-width and 1 bidi diagnostic, got %d and %d", zw, bidi)
+	}
+}
+
+// TestCheckAcceptsLegitimateInvisibles pins skillet/hidden's context rules, which the old
+// classifier lacked: it rejected emoji sequences, Persian text, the three flag emoji and a
+// byte-order mark written by an editor.
+func TestCheckAcceptsLegitimateInvisibles(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"emoji ZWJ sequence":      "team \U0001F468\u200D\U0001F469\u200D\U0001F467\n",
+		"Persian ZWNJ":            "\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645\n",
+		"England flag":            "\U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F\n",
+		"leading byte-order mark": "\uFEFF---\n",
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for _, d := range lint.Check(hiddenSkill(raw), lint.Options{}) {
+				if strings.Contains(d.Message, "hidden") {
+					t.Errorf("legitimate text flagged: %q", d.Message)
+				}
+			}
+		})
 	}
 }

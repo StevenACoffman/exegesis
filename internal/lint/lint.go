@@ -90,9 +90,7 @@ func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
 	// off in exactly the run that needed it. Affordable as a hard gate only because
 	// the predicate is an exact codepoint test — see hidden.go on why the confusable
 	// heuristic is excluded rather than demoted to a warning.
-	for _, h := range scanHidden(s.Raw) {
-		ds = append(ds, diag(h.message()))
-	}
+	ds = append(ds, hiddenFindings(skill.FileName, s.Raw)...)
 	if opts.Redlines {
 		ds = append(ds, redlines.Check(s)...)
 	}

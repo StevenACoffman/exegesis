@@ -654,6 +654,7 @@ func verifyOne(dir string, opts lintlib.Options, comp testprompts.Composition) s
 		// was read, not because the document said nothing.
 		r.edges = related.EdgeMap(related.ParseSection(s.Body))
 		r.findings = lintlib.Check(s, opts)
+		r.findings = append(r.findings, lintlib.CheckBundle(os.DirFS(dir), s)...)
 	} else {
 		r.findings = []finding.Diagnostic{{Severity: finding.SeverityError, Message: err.Error()}}
 	}

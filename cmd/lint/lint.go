@@ -89,6 +89,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 			return fmt.Errorf("lint: %w", loadErr)
 		}
 		findings := lintlib.Check(s, opts)
+		findings = append(findings, lintlib.CheckBundle(os.DirFS(dir), s)...)
 		if opts.Redlines {
 			findings = append(findings, missingTestPrompts(dir)...)
 		}
