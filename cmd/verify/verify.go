@@ -285,6 +285,7 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	// unverified.
 	incomplete := checkGraph(tree)
 	incomplete = append(incomplete, checkClosure(tree, reports)...)
+	incomplete = append(incomplete, checkDevArtifacts(reports)...)
 	attributed, err := cfg.attribution(reports)
 	if err != nil {
 		return false, err
