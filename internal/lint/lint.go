@@ -6,8 +6,9 @@
 // Two families of rule live in skillet so exegesis and skillsaw share one source of
 // truth rather than drifting: the agentskills.io frontmatter rules (speclint) and
 // the Quality Red Lines (redlines). The checks below are the ones that remain
-// exegesis-specific: folder match, body links, runtime neutrality, hidden
-// characters, and the opt-in registry budgets.
+// exegesis-specific: body links, runtime neutrality, hidden characters, and the
+// opt-in registry budgets. speclint's findings include warnings (unknown keys, a
+// description over the family's length target); only errors block.
 //
 // Before adding a rule here, read "speclint Is the Spec, Not the Style Guide" in the
 // README: speclint carries the agentskills.io contract, the same vendor also publishes
@@ -18,7 +19,6 @@ package lint
 
 import (
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -64,21 +64,14 @@ type Checks struct {
 //	(disallowed key, name/dir mismatch, over-long or empty or markup-laden
 //	description, escaping/absolute body links, runtime binding); it is pure.
 func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
-	ds := speclint.Frontmatter(s)
-	// Only compare the name when there was a name to read. A frontmatter block that
-	// failed to parse leaves s.Name empty, and reporting that as a mismatch states a
-	// consequence of the YAML error as though it were a second, independent defect —
-	// speclint has already named the real one.
+	// speclint carries the whole spec name rule, the folder match included, and reports a
+	// frontmatter parse failure as itself rather than as a missing name.
 	//
-	// The body checks below are deliberately still run: splitFrontmatter separates the
-	// block before the parse is attempted, so s.Body is intact and its defects are
-	// real. Suppressing them would make the author fix the YAML and lint again just to
-	// be told what could have been said the first time.
-	if s.FrontmatterErr == nil {
-		if want := filepath.Base(s.Dir); s.Name != want {
-			ds = append(ds, diagf("frontmatter: name %q != folder %q", s.Name, want))
-		}
-	}
+	// The body checks below are deliberately still run when the frontmatter did not
+	// parse: frontmatter.Split separates the block before the parse is attempted, so
+	// s.Body is intact and its defects are real. Suppressing them would make the author
+	// fix the YAML and lint again just to be told what could have been said the first time.
+	ds := speclint.Frontmatter(s)
 	ds = append(ds, checkBody(s.Body)...)
 	ds = append(ds, checkBudget(s, opts)...)
 	for _, h := range neutrality.Scan([]neutrality.NamedFile{{Name: "SKILL.md", Content: s.Raw}}) {

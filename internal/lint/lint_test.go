@@ -104,7 +104,7 @@ func TestCheckDefects(t *testing.T) {
 				Description:     "d",
 				FrontmatterKeys: []string{"source_book"},
 			},
-			wantSub: "disallowed key",
+			wantSub: `"source_book" is not in the Agent Skills spec`,
 		},
 		{
 			name:    "name mismatch",

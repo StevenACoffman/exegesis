@@ -262,11 +262,11 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	}
 	opts.Redlines = checks.Redlines
 	opts.SkillLens = checks.SkillLens
-	reports, err := verifySkills(tree, opts, testcomp.For(cfg.Merge))
+	reports, skipped, err := verifySkills(tree, opts, testcomp.For(cfg.Merge))
 	if err != nil {
 		return false, err
 	}
-	treeProblems := checkCatalog(expected, reports)
+	treeProblems := append(skipped, checkCatalog(expected, reports)...)
 	// Graph incompleteness is reported and does not fail the tree. A curated tree is
 	// deliberately a subset, so a depends-on target absent from it is provenance rather
 	// than a defect -- and nothing here can tell an archived skill from a typo, since
@@ -489,7 +489,7 @@ func checkCatalog(expected []string, reports []skillReport) []string {
 // checkClosure reports immediate subdirectories of tree that hold no SKILL.md, so a
 // reader can tell a lost skill from a deliberate working directory.
 //
-// It derives the set by **subtracting what Discover returned** rather than asking each
+// It derives the set by **subtracting what DiscoverTree returned** rather than asking each
 // directory whether it holds a SKILL.md. Re-asking would put the rule that defines a
 // skill directory in two modules, and the drift would be silent: skillet could widen
 // what counts and this would keep reporting the old complement. Subtraction encodes
@@ -608,20 +608,31 @@ func checkMergeOverview(tree string) []string {
 	return nil
 }
 
+// verifySkills gates every skill DiscoverTree finds under tree, and returns the entries
+// discovery could not judge as tree problems.
+//
+// DiscoverTree rather than Discover, because this is the command that judges the tree:
+// an entry that escapes it (a symbolic link out of a packaged tree, which would not
+// survive an installer's copy) or cannot be read is a defect of the tree, and Discover
+// would let it read as absent.
 func verifySkills(
 	tree string,
 	opts lintlib.Options,
 	comp testprompts.Composition,
-) ([]skillReport, error) {
-	dirs, err := skill.Discover(tree)
+) ([]skillReport, []string, error) {
+	found, err := skill.DiscoverTree(tree)
 	if err != nil {
-		return nil, fmt.Errorf("discover skills: %w", err)
+		return nil, nil, fmt.Errorf("discover skills: %w", err)
 	}
-	reports := make([]skillReport, 0, len(dirs))
-	for _, dir := range dirs {
+	reports := make([]skillReport, 0, len(found.Dirs))
+	for _, dir := range found.Dirs {
 		reports = append(reports, verifyOne(dir, opts, comp))
 	}
-	return reports, nil
+	skipped := make([]string, 0, len(found.Skipped))
+	for _, sk := range found.Skipped {
+		skipped = append(skipped, fmt.Sprintf("skipped: %s: %s", sk.Path, sk.Reason))
+	}
+	return reports, skipped, nil
 }
 
 func verifyOne(dir string, opts lintlib.Options, comp testprompts.Composition) skillReport {

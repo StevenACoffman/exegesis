@@ -47,13 +47,13 @@ func TestMergeMigrateMakesAMergedTreeLintClean(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	// Before: the disallowed keys are exactly what lint reports.
+	// Before: lint fails, and names the keys the spec does not define.
 	out, err := run(t, "lint", dir)
 	var exit root.ExitError
 	if !errors.As(err, &exit) {
 		t.Fatalf("expected lint to fail on the pre-migration shape, got %v\n%s", err, out)
 	}
-	if !strings.Contains(out, `disallowed key "source_skills"`) {
+	if !strings.Contains(out, `"source_skills" is not in the Agent Skills spec`) {
 		t.Errorf("expected a disallowed-key finding, got:\n%s", out)
 	}
 
