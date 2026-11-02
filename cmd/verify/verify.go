@@ -47,6 +47,10 @@ skills gate writes skills-manifest.json.
 With --registry, also enforce per-skill word budgets and required sections and
 check the discovered skills against the expected catalog.
 
+A SKILL.md over --max-lines (default 500, agentskills.io's recommendation) fails its
+skill unless the registry's line_ceilings records it as a known exception; an
+exception may not grow past its ceiling, and is reminded to lower it when it shrinks.
+
 With --merge, verify a merged tree: gate each skill's test-prompts under the
 merged composition (which adds the prefer_merged_over_source category and raises
 the edge_case floor) instead of the standard one, and require MERGE_OVERVIEW.md
@@ -73,6 +77,7 @@ type Config struct {
 	Gates      string
 	Check      string
 	SourceBook string
+	MaxLines   int
 	Merge      bool
 	Strict     bool
 	Flags      *ff.FlagSet
@@ -142,6 +147,9 @@ func New(parent *root.Config) *Config {
 	)
 	cfg.Flags.BoolVar(&cfg.Strict, 0, "strict",
 		"with --source-book: fail the tree when a merged skill adds too few signals")
+	cfg.Flags.IntVar(&cfg.MaxLines, 0, "max-lines", lintlib.DefaultMaxLines,
+		"fail a skill whose SKILL.md exceeds this many lines, agentskills.io's recommendation "+
+			"(0 = unlimited; registry line_ceilings lists known exceptions)")
 	cfg.Command = &ff.Command{
 		Name:      "verify",
 		Usage:     "exegesis verify [--gates LIST] [--check redlines] [--manifest PATH] [--registry PATH] [TREE]",
@@ -262,6 +270,7 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	}
 	opts.Redlines = checks.Redlines
 	opts.SkillLens = checks.SkillLens
+	opts.MaxLines = cfg.MaxLines
 	reports, skipped, err := verifySkills(tree, opts, testcomp.For(cfg.Merge))
 	if err != nil {
 		return false, err
@@ -445,6 +454,7 @@ func (cfg *Config) loadRegistry() (lintlib.Options, []string, error) {
 		MaxBodyWords:        r.MaxBodyWords,
 		MaxDescriptionWords: r.MaxDescriptionWords,
 		RequiredSections:    r.RequiredSections,
+		LineCeilings:        r.LineCeilings,
 	}, r.ExpectedSkills, nil
 }
 

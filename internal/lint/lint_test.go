@@ -352,3 +352,14 @@ func TestCheckStillReportsNameMismatchWhenFrontmatterParsed(t *testing.T) {
 		t.Error("a real name/folder mismatch must still be reported")
 	}
 }
+
+// findingsContaining keeps the diagnostics whose message contains sub.
+func findingsContaining(ds []finding.Diagnostic, sub string) []finding.Diagnostic {
+	var out []finding.Diagnostic
+	for _, d := range ds {
+		if strings.Contains(d.Message, sub) {
+			out = append(out, d)
+		}
+	}
+	return out
+}

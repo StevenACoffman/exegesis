@@ -34,14 +34,21 @@ var (
 	reInlineCode = regexp.MustCompile("`[^`]*`")
 )
 
-// Options are the opt-in, registry/flag-driven budget and structure checks. The
-// zero value enforces nothing, so existing trees keep passing.
+// Options are the registry/flag-driven budget and structure checks. The zero value
+// enforces nothing; the commands turn the line gate on by default.
 type Options struct {
 	MaxBodyWords        int      // 0 = unlimited
 	MaxDescriptionWords int      // 0 = unlimited
 	RequiredSections    []string // heading substrings that must be present and non-empty
-	Redlines            bool     // opt-in: enforce book2skill's mechanical Quality Red Lines
-	SkillLens           bool     // opt-in: the SkillLens quality tier (skillet/skilllens)
+
+	// MaxLines is the SKILL.md line gate; 0 disables it. The commands default it to
+	// DefaultMaxLines, so it is on unless a caller turns it off.
+	MaxLines int
+	// LineCeilings records the known exceptions to MaxLines by skill folder, each with the
+	// line count it may not grow past (the registry's line_ceilings).
+	LineCeilings map[string]int
+	Redlines     bool // opt-in: enforce book2skill's mechanical Quality Red Lines
+	SkillLens    bool // opt-in: the SkillLens quality tier (skillet/skilllens)
 }
 
 // Checks says which opt-in tiers a --check value enables. Each tier is on its own
@@ -74,6 +81,7 @@ func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
 	ds := speclint.Frontmatter(s)
 	ds = append(ds, checkBody(s.Body)...)
 	ds = append(ds, checkBudget(s, opts)...)
+	ds = append(ds, checkSize(s, opts.MaxLines, opts.LineCeilings)...)
 	for _, h := range neutrality.Scan([]neutrality.NamedFile{{Name: "SKILL.md", Content: s.Raw}}) {
 		ds = append(ds, diagf("runtime-bound wording at SKILL.md:%d: %q", h.Line, h.Text))
 	}
