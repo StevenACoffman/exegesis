@@ -59,6 +59,12 @@ skill is gated under the standard one, so a tree may mix the two. A related-skil
 edge naming a skill absent from the tree, but listed in exactly one skill's
 merged-from, is reported as merged into that skill rather than as missing.
 
+A merged skill's audit is expected at dev/<slug>/merge-audit.md, in the nearest
+dev/ directory at or above the tree (stopping at the repository root): beside the
+skills in a merge-skills output, or at the root of a repository that parks
+development files there. One that is missing is reported; verify does not fail on
+it, since an installed tree carries no dev/.
+
 With --merge, verify a tree that is merged throughout: gate every skill under the
 merged composition, declared or not, and require MERGE_OVERVIEW.md at the tree
 root.
@@ -99,6 +105,9 @@ type skillReport struct {
 	findings []finding.Diagnostic
 	problems []string // test-prompts problems (incl. "missing test-prompts.json")
 	hasTests bool
+	// merged reports whether the skill declares metadata.merged-from, which is what
+	// checkMergeAudits looks for; --merge does not set it.
+	merged bool
 
 	// edges is the skill's related-skills graph as the manifest records it, or nil when
 	// SKILL.md could not be read. Nil is not "declares none": the manifest tells those
@@ -292,6 +301,7 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	incomplete := checkGraph(tree)
 	incomplete = append(incomplete, checkClosure(tree, reports)...)
 	incomplete = append(incomplete, checkDevArtifacts(reports)...)
+	incomplete = append(incomplete, checkMergeAudits(tree, reports)...)
 	attributed, err := cfg.attribution(reports)
 	if err != nil {
 		return false, err
@@ -690,7 +700,8 @@ func verifyOne(dir string, opts lintlib.Options, allMerged bool) skillReport {
 	r := skillReport{dir: dir, slug: filepath.Base(dir)}
 	merged := allMerged
 	if s, err := skill.Load(dir); err == nil {
-		merged = merged || mergedfrom.Parse(s.Frontmatter).Declared
+		r.merged = mergedfrom.Parse(s.Frontmatter).Declared
+		merged = merged || r.merged
 		r.hash = s.Hash()
 		// Off the same load as the hash rather than a second read, which is what keeps an
 		// unloadable skill under one rule: hash and edges are both empty because nothing

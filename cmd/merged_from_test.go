@@ -128,3 +128,52 @@ func TestEdgeToSubsumedSkillIsRedirected(t *testing.T) {
 		t.Errorf("INDEX.md must draw the edge to the merged skill:\n%s", index)
 	}
 }
+
+// TestMergeAuditIsLookedForInDev checks verify finds the parked dev/ tree above a plugin's
+// skills, as the market lays it out, and reports a merged skill with no audit there
+// without failing on it.
+func TestMergeAuditIsLookedForInDev(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tree := filepath.Join(repo, "plugins", "p", "skills")
+	if err := os.MkdirAll(tree, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"audited", "unaudited"} {
+		dir := writeNamedSkill(t, tree, name)
+		declareMergedFrom(t, dir, "source-"+name)
+		writeAt(t, filepath.Join(dir, "test-prompts.json"), mergedTP)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, "dev", "audited"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeAt(t, filepath.Join(repo, "dev", "audited", "merge-audit.md"), "# Merge Audit\n")
+
+	out, err := run(t, "verify", "--gates", "skills", tree)
+	if err != nil {
+		t.Fatalf("a missing audit must not fail verify: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "dev: unaudited: declares metadata.merged-from but has no") {
+		t.Errorf("want the unaudited skill reported:\n%s", out)
+	}
+	if strings.Contains(out, "dev: audited:") {
+		t.Errorf("an audited skill must not be reported:\n%s", out)
+	}
+}
+
+// TestMergeAuditSearchStaysInsideTheTree checks a tree outside any repository looks for
+// dev/ in itself only, and so never mistakes the system's /dev for the parked tree.
+func TestMergeAuditSearchStaysInsideTheTree(t *testing.T) {
+	t.Parallel()
+	tree, _ := mixedTree(t)
+	out, err := run(t, "verify", "--gates", "skills", tree)
+	if err != nil {
+		t.Fatalf("verify: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "dev: no dev/ directory at or above") {
+		t.Errorf("want the absent dev/ reported once:\n%s", out)
+	}
+}
