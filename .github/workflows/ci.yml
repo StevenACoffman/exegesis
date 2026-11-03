@@ -16,7 +16,6 @@ env:
   GOLANGCI_LINT_VERSION: "latest"
 permissions:
   contents: read
-name: Test
 jobs:
   test:
     runs-on: ubuntu-latest
