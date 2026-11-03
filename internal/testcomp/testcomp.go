@@ -6,7 +6,12 @@
 // it earns promotion to skillet only on a consumer outside exegesis.
 package testcomp
 
-import "github.com/StevenACoffman/skillet/testprompts"
+import (
+	"fmt"
+
+	"github.com/StevenACoffman/exegesis/internal/mergedfrom"
+	"github.com/StevenACoffman/skillet/testprompts"
+)
 
 // PreferMerged is the case category unique to a merged skill: a prompt where the merged
 // skill must be chosen over either source it came from. skillet does not know it exists;
@@ -23,8 +28,10 @@ const (
 	preferMergedMinimum = 2
 )
 
-// For returns the case mix a tree is gated against: the merged-skill mix when merged is
-// true, otherwise skillet's standard one. It is the one definition both `tests` and
+// For returns the case mix a skill is gated against: the merged-skill mix when merged is
+// true, otherwise skillet's standard one. A caller passes true for every skill under
+// --merge, and otherwise for a skill that declares metadata.merged-from. It is the one definition
+// both `tests` and
 // `verify` call, so they cannot disagree about what a merged tree requires.
 func For(merged bool) testprompts.Composition {
 	want := testprompts.Standard()
@@ -33,4 +40,19 @@ func For(merged bool) testprompts.Composition {
 		want[PreferMerged] = preferMergedMinimum
 	}
 	return want
+}
+
+// Undeclared explains a prefer_merged_over_source case in a skill gated under the
+// standard mix. Without it the only report is skillet's "unknown type", which is true
+// and points nowhere: the repair is a frontmatter declaration, not a test-prompts edit.
+//
+// Ensures: nil when merged is true or the file holds no prefer_merged_over_source case.
+func Undeclared(f *testprompts.File, merged bool) []string {
+	if merged || f.CountOf(PreferMerged) == 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"%s cases need the merged composition: declare %s with the skills this one "+
+			"was merged from, or run with --merge on a tree that is merged throughout",
+		PreferMerged, mergedfrom.Path)}
 }
