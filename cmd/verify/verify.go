@@ -16,6 +16,7 @@ import (
 	"github.com/StevenACoffman/exegesis/internal/a2check"
 	"github.com/StevenACoffman/exegesis/internal/indexgen"
 	lintlib "github.com/StevenACoffman/exegesis/internal/lint"
+	"github.com/StevenACoffman/exegesis/internal/mergedfrom"
 	"github.com/StevenACoffman/exegesis/internal/overview"
 	"github.com/StevenACoffman/exegesis/internal/provenance"
 	"github.com/StevenACoffman/exegesis/internal/registry"
@@ -51,11 +52,22 @@ A SKILL.md over --max-lines (default 500, agentskills.io's recommendation) fails
 skill unless the registry's line_ceilings records it as a known exception; an
 exception may not grow past its ceiling, and is reminded to lower it when it shrinks.
 
-With --merge, verify a merged tree: gate each skill's test-prompts under the
-merged composition (which adds the prefer_merged_over_source category and raises
-the edge_case floor) instead of the standard one, and require MERGE_OVERVIEW.md
-at the tree root. Without it, a merged skill's prefer_merged_over_source cases
-are rejected as an unknown type.
+A skill that declares metadata.merged-from (the space-separated names of the
+skills it was merged from) is gated under the merged composition, which adds the
+prefer_merged_over_source category and raises the edge_case floor; every other
+skill is gated under the standard one, so a tree may mix the two. A related-skill
+edge naming a skill absent from the tree, but listed in exactly one skill's
+merged-from, is reported as merged into that skill rather than as missing.
+
+A merged skill's audit is expected at dev/<slug>/merge-audit.md, in the nearest
+dev/ directory at or above the tree (stopping at the repository root): beside the
+skills in a merge-skills output, or at the root of a repository that parks
+development files there. One that is missing is reported; verify does not fail on
+it, since an installed tree carries no dev/.
+
+With --merge, verify a tree that is merged throughout: gate every skill under the
+merged composition, declared or not, and require MERGE_OVERVIEW.md at the tree
+root.
 
 With --source-book, additionally report for each merged skill how many A2 language
 signals it states that none of the sources it replaced state. The sources are found by
@@ -93,6 +105,9 @@ type skillReport struct {
 	findings []finding.Diagnostic
 	problems []string // test-prompts problems (incl. "missing test-prompts.json")
 	hasTests bool
+	// merged reports whether the skill declares metadata.merged-from, which is what
+	// checkMergeAudits looks for; --merge does not set it.
+	merged bool
 
 	// edges is the skill's related-skills graph as the manifest records it, or nil when
 	// SKILL.md could not be read. Nil is not "declares none": the manifest tells those
@@ -271,7 +286,7 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	opts.Redlines = checks.Redlines
 	opts.SkillLens = checks.SkillLens
 	opts.MaxLines = cfg.MaxLines
-	reports, skipped, err := verifySkills(tree, opts, testcomp.For(cfg.Merge))
+	reports, skipped, err := verifySkills(tree, opts, cfg.Merge)
 	if err != nil {
 		return false, err
 	}
@@ -286,6 +301,7 @@ func (cfg *Config) runSkills(tree string, overviewPass bool) (bool, error) {
 	incomplete := checkGraph(tree)
 	incomplete = append(incomplete, checkClosure(tree, reports)...)
 	incomplete = append(incomplete, checkDevArtifacts(reports)...)
+	incomplete = append(incomplete, checkMergeAudits(tree, reports)...)
 	attributed, err := cfg.attribution(reports)
 	if err != nil {
 		return false, err
@@ -562,13 +578,17 @@ func unlisted(all, verified []string) []string {
 }
 
 func checkGraph(tree string) []string {
-	nodes, err := indexgen.CollectNodes(tree)
+	nodes, subsumers, err := indexgen.CollectGraph(tree)
 	if err != nil {
 		return []string{fmt.Sprintf("graph: not checked: %v", err)}
 	}
 	dangling := related.DanglingEdges(nodes)
 	problems := make([]string, 0, len(dangling))
 	for _, d := range dangling {
+		if line, ok := subsumedEdge(d, subsumers); ok {
+			problems = append(problems, line)
+			continue
+		}
 		problems = append(problems, fmt.Sprintf(
 			"graph: %s: %s `%s` — not in this tree, so INDEX.md cannot order on it "+
 				"(expected in a curated tree; verify does not fail on it)",
@@ -576,6 +596,33 @@ func checkGraph(tree string) []string {
 		))
 	}
 	return problems
+}
+
+// subsumedEdge reports a dangling edge whose target some skill in the tree declares in
+// metadata.merged-from. One claimant is presumed to have subsumed the target, and INDEX.md
+// draws the edge to it; two or more are named and the edge stays dropped, because
+// choosing one would be a guess. A merged skill naming its own source is the merge
+// itself, not a relation, so it is reported as an edge to remove.
+func subsumedEdge(d related.DanglingEdge, subsumers map[string][]string) (string, bool) {
+	claimants := subsumers[d.Edge.Target]
+	switch to, ok := mergedfrom.Resolve(subsumers, d.Edge.Target); {
+	case ok && to == d.Source:
+		return fmt.Sprintf(
+			"graph: %s: %s `%s` — a source this skill was merged from, so the edge "+
+				"names the merge rather than a relation; INDEX.md omits it",
+			d.Source, d.Edge.Kind, d.Edge.Target), true
+	case ok:
+		return fmt.Sprintf(
+			"graph: %s: %s `%s` — not in this tree, but merged into `%s` (its %s), "+
+				"so INDEX.md draws the edge to `%s`; rename the target to say so",
+			d.Source, d.Edge.Kind, d.Edge.Target, to, mergedfrom.Path, to), true
+	case len(claimants) > 1:
+		return fmt.Sprintf(
+			"graph: %s: %s `%s` — not in this tree, and merged into more than one skill "+
+				"(%s), so INDEX.md cannot choose and drops it; name the one meant",
+			d.Source, d.Edge.Kind, d.Edge.Target, strings.Join(claimants, ", ")), true
+	}
+	return "", false
 }
 
 // checkOverview runs the Stage-0 gate on TREE/BOOK_OVERVIEW.md. ran reports
@@ -626,10 +673,13 @@ func checkMergeOverview(tree string) []string {
 // an entry that escapes it (a symbolic link out of a packaged tree, which would not
 // survive an installer's copy) or cannot be read is a defect of the tree, and Discover
 // would let it read as absent.
+//
+// allMerged is --merge: every skill is gated under the merged composition. Otherwise
+// each skill's own metadata.merged-from decides.
 func verifySkills(
 	tree string,
 	opts lintlib.Options,
-	comp testprompts.Composition,
+	allMerged bool,
 ) ([]skillReport, []string, error) {
 	found, err := skill.DiscoverTree(tree)
 	if err != nil {
@@ -637,7 +687,7 @@ func verifySkills(
 	}
 	reports := make([]skillReport, 0, len(found.Dirs))
 	for _, dir := range found.Dirs {
-		reports = append(reports, verifyOne(dir, opts, comp))
+		reports = append(reports, verifyOne(dir, opts, allMerged))
 	}
 	skipped := make([]string, 0, len(found.Skipped))
 	for _, sk := range found.Skipped {
@@ -646,9 +696,12 @@ func verifySkills(
 	return reports, skipped, nil
 }
 
-func verifyOne(dir string, opts lintlib.Options, comp testprompts.Composition) skillReport {
+func verifyOne(dir string, opts lintlib.Options, allMerged bool) skillReport {
 	r := skillReport{dir: dir, slug: filepath.Base(dir)}
+	merged := allMerged
 	if s, err := skill.Load(dir); err == nil {
+		r.merged = mergedfrom.Parse(s.Frontmatter).Declared
+		merged = merged || r.merged
 		r.hash = s.Hash()
 		// Off the same load as the hash rather than a second read, which is what keeps an
 		// unloadable skill under one rule: hash and edges are both empty because nothing
@@ -659,12 +712,12 @@ func verifyOne(dir string, opts lintlib.Options, comp testprompts.Composition) s
 	} else {
 		r.findings = []finding.Diagnostic{{Severity: finding.SeverityError, Message: err.Error()}}
 	}
-	r.hasTests, r.testHash, r.problems = gateTestPrompts(dir, comp)
+	r.hasTests, r.testHash, r.problems = gateTestPrompts(dir, merged)
 	return r
 }
 
 // gateTestPrompts reads a skill's test-prompts file, hashes the bytes, and gates the
-// parsed cases against comp.
+// parsed cases against the merged composition when merged is true, otherwise the standard one.
 //
 // The bytes are read here rather than through testprompts.Load because the manifest
 // needs their hash and Load hands back only the parsed file. Hashing what was read --
@@ -675,10 +728,7 @@ func verifyOne(dir string, opts lintlib.Options, comp testprompts.Composition) s
 // parse: skillet's manifest documents an empty hash as *absent*, and a malformed file
 // is present and can change. A parse failure is a problem, not an absence, and the
 // verdict is unaffected either way -- skillPasses already requires no problems.
-func gateTestPrompts(
-	dir string,
-	comp testprompts.Composition,
-) (present bool, hash string, problems []string) {
+func gateTestPrompts(dir string, merged bool) (present bool, hash string, problems []string) {
 	b, err := os.ReadFile(filepath.Join(dir, "test-prompts.json"))
 	if err != nil {
 		return false, "", []string{"missing or unreadable test-prompts.json"}
@@ -692,7 +742,9 @@ func gateTestPrompts(
 		// already named.
 		return true, hash, []string{err.Error()}
 	}
-	return true, hash, f.ValidateAgainst(comp)
+	return true, hash, append(
+		f.ValidateAgainst(testcomp.For(merged)),
+		testcomp.Undeclared(f, merged)...)
 }
 
 func (cfg *Config) writeManifest(tree string, reports []skillReport, verified bool) error {

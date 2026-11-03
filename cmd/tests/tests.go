@@ -13,7 +13,9 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/exegesis/cmd/root"
+	"github.com/StevenACoffman/exegesis/internal/mergedfrom"
 	"github.com/StevenACoffman/exegesis/internal/testcomp"
+	"github.com/StevenACoffman/skillet/skill"
 	"github.com/StevenACoffman/skillet/testprompts"
 )
 
@@ -35,7 +37,8 @@ func New(parent *root.Config) *Config {
 	cfg.Flags.BoolVar(&cfg.Scaffold, 0, "scaffold",
 		"write a starter test-prompts.json (with checks derived from expected) instead of checking")
 	cfg.Flags.BoolVar(&cfg.Merge, 0, "merge",
-		"gate against the merged-skill composition, which adds "+testcomp.PreferMerged)
+		"gate every set against the merged-skill composition, which adds "+testcomp.PreferMerged+
+			", whether or not the skill declares "+mergedfrom.Path)
 	cfg.Flags.BoolVar(&cfg.Migrate, 0, "migrate",
 		"rewrite each test-prompts.json into canonical form, reporting every change")
 	cfg.Command = &ff.Command{
@@ -46,12 +49,14 @@ func New(parent *root.Config) *Config {
 (>=3 should_trigger, >=2 should_not_trigger, >=1 edge_case). Exits non-zero if any
 set fails.
 
-With --merge: gate against the merged-skill composition instead -- the same three
-categories with the edge_case floor raised to 2, plus >=2 ` + testcomp.PreferMerged + `,
-prompts where the merged skill must be chosen over either source skill it came
-from. That last category is the quality gate unique to a merged skill, and the
-plain gate rejects it as an unknown case type, so a merged set must be checked
-with --merge or not at all.
+A skill whose SKILL.md declares metadata.merged-from (the space-separated names
+of the skills it was merged from) is gated against the merged-skill composition
+instead -- the same three categories with the edge_case floor raised to 2, plus
+>=2 ` + testcomp.PreferMerged + `, prompts where the merged skill must be chosen
+over either source skill it came from. That last category is the quality gate
+unique to a merged skill, and the standard gate rejects it as an unknown case type.
+
+With --merge: gate every set against the merged-skill composition, declared or not.
 
 With --scaffold: write a starter SKILL_DIR/test-prompts.json whose cases carry a
 "checks" array seeded from each case's "expected" text, ready for skillsaw's
@@ -82,7 +87,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	case cfg.Migrate:
 		return cfg.migrate(args)
 	}
-	return cfg.gate(args, cfg.composition())
+	return cfg.gate(args)
 }
 
 func (cfg *Config) scaffold(dirs []string) error {
@@ -100,11 +105,15 @@ func (cfg *Config) scaffold(dirs []string) error {
 	return nil
 }
 
-// composition is the case mix to gate against: the merged-skill mix under --merge,
-// otherwise skillet's standard one. It defers to internal/testcomp so `tests` and
-// `verify` gate a merged tree identically.
-func (cfg *Config) composition() testprompts.Composition {
-	return testcomp.For(cfg.Merge)
+// merged reports whether dir is gated against the merged-skill composition: every set
+// under --merge, otherwise a skill whose SKILL.md declares metadata.merged-from. A
+// SKILL.md that will not load declares nothing, and lint reports why.
+func (cfg *Config) merged(dir string) bool {
+	if cfg.Merge {
+		return true
+	}
+	s, err := skill.Load(dir)
+	return err == nil && mergedfrom.Parse(s.Frontmatter).Declared
 }
 
 // displayOrder lists a composition's categories for reporting: the three standard ones
@@ -138,10 +147,13 @@ func displayOrder(want testprompts.Composition) []string {
 	return append(out, extra...)
 }
 
-// gate reports each set's composition against want and fails if any set falls short.
-func (cfg *Config) gate(dirs []string, want testprompts.Composition) error {
+// gate reports each set's composition against the mix its skill is gated under, and
+// fails if any set falls short.
+func (cfg *Config) gate(dirs []string) error {
 	failed := false
 	for _, dir := range dirs {
+		merged := cfg.merged(dir)
+		want := testcomp.For(merged)
 		path := filepath.Join(dir, "test-prompts.json")
 		f, err := testprompts.Load(path)
 		if err != nil {
@@ -155,7 +167,7 @@ func (cfg *Config) gate(dirs []string, want testprompts.Composition) error {
 		}
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s: %s\n",
 			filepath.Base(dir), strings.Join(counts, ", "))
-		problems := f.ValidateAgainst(want)
+		problems := append(f.ValidateAgainst(want), testcomp.Undeclared(f, merged)...)
 		for _, p := range problems {
 			_, _ = fmt.Fprintf(cfg.Stdout, "  - %s\n", p)
 		}

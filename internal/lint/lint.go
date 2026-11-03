@@ -19,9 +19,11 @@ package lint
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/StevenACoffman/exegesis/internal/mergedfrom"
 	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/neutrality"
 	"github.com/StevenACoffman/skillet/redlines"
@@ -69,7 +71,8 @@ type Checks struct {
 // Ensures:  the result contains a Severity==error diagnostic for every hard defect
 //
 //	(disallowed key, name/dir mismatch, over-long or empty or markup-laden
-//	description, escaping/absolute body links, runtime binding); it is pure.
+//	description, escaping/absolute body links, runtime binding, a malformed
+//	metadata.merged-from); it is pure.
 func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
 	// speclint carries the whole spec name rule, the folder match included, and reports a
 	// frontmatter parse failure as itself rather than as a missing name.
@@ -102,6 +105,9 @@ func Check(s *skill.Skill, opts Options) []finding.Diagnostic {
 	// the predicate is an exact codepoint test — see hidden.go on why the confusable
 	// heuristic is excluded rather than demoted to a warning.
 	ds = append(ds, hiddenFindings(skill.FileName, s.Raw)...)
+	for _, p := range mergedfrom.Parse(s.Frontmatter).Problems(filepath.Base(s.Dir)) {
+		ds = append(ds, diag(p))
+	}
 	if opts.Redlines {
 		ds = append(ds, redlines.Check(s)...)
 	}

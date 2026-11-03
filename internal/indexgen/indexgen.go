@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/StevenACoffman/exegesis/internal/mergedfrom"
 	"github.com/StevenACoffman/skillet/naming"
 	"github.com/StevenACoffman/skillet/related"
 	"github.com/StevenACoffman/skillet/skill"
@@ -29,11 +30,15 @@ func Path(tree string) string {
 // the generated block preserved. title/author override the header derived from
 // BOOK_OVERVIEW.md (empty means derive).
 func Generate(tree, title, author string) (string, error) {
-	nodes, err := CollectNodes(tree)
+	nodes, subsumers, err := CollectGraph(tree)
 	if err != nil {
 		return "", err
 	}
 	existing := readFile(Path(tree))
+	// Edges to a skill that was merged away are drawn to the skill that subsumed it,
+	// which is what its metadata.merged-from declares; verify reports each one so the
+	// edge can be renamed at its source.
+	nodes = mergedfrom.Redirect(nodes, subsumers)
 	return related.Render(header(tree, title, author), nodes, related.Split(existing)), nil
 }
 
@@ -45,17 +50,29 @@ func Generate(tree, title, author string) (string, error) {
 // A skill whose SKILL.md cannot be loaded is an error, not a gap in the graph:
 // silently omitting it would make an edge to it look dangling.
 func CollectNodes(tree string) ([]related.Node, error) {
+	nodes, _, err := CollectGraph(tree)
+	return nodes, err
+}
+
+// CollectGraph is CollectNodes plus the tree's merge declarations: each source skill
+// named in some skill's metadata.merged-from, mapped to the skills that name it. Both
+// come off the one load of each SKILL.md.
+func CollectGraph(tree string) ([]related.Node, map[string][]string, error) {
 	dirs, err := skill.Discover(tree)
 	if err != nil {
-		return nil, fmt.Errorf("discover skills: %w", err)
+		return nil, nil, fmt.Errorf("discover skills: %w", err)
 	}
 	nodes := make([]related.Node, 0, len(dirs))
+	decls := make(map[string]mergedfrom.Declaration)
 	for _, dir := range dirs {
 		s, loadErr := skill.Load(dir)
 		if loadErr != nil {
-			return nil, fmt.Errorf("load %s: %w", dir, loadErr)
+			return nil, nil, fmt.Errorf("load %s: %w", dir, loadErr)
 		}
 		slug := skill.Slug(filepath.Base(dir))
+		if d := mergedfrom.Parse(s.Frontmatter); d.Declared {
+			decls[slug] = d
+		}
 		nodes = append(nodes, related.Node{
 			Slug:        slug,
 			Title:       naming.Title(slug),
@@ -65,7 +82,7 @@ func CollectNodes(tree string) ([]related.Node, error) {
 			Body:        s.Body,
 		})
 	}
-	return nodes, nil
+	return nodes, mergedfrom.Subsumers(decls), nil
 }
 
 // header resolves the INDEX.md heading: the title/author overrides, falling back

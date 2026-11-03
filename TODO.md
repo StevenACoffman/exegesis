@@ -370,6 +370,23 @@ Nothing else in the exegesis pipeline depends on these — book2skill's flow is 
       information leakage this file keeps catching. The manifest-origin item in §Agent-Red
       Survey is a *different* gap — it is about skills arriving from outside the tree, which
       have no source-side edge to invert — and neither item unblocks the other.
+- [x] **`metadata.merged-from`: gate a merged skill by its own declaration.** DONE
+      (2026-11-03). `--merge` picks one composition for a whole tree, so a tree mixing
+      merged and ordinary skills failed either way: the steve-skill-market's go-craft, grpc
+      and testing-legacy plugins each hold one or two merged skills among ordinary ones.
+      A skill now declares `metadata.merged-from: source-a source-b`, and `verify` and
+      `tests` gate it under the merged composition while its neighbours keep the standard
+      one; `--merge` still forces the merged mix on every skill and requires
+      `MERGE_OVERVIEW.md`. `lint` rejects an empty list, an invalid name, a duplicate, and a
+      skill naming itself. The same value names the sources, so an edge to a source no
+      longer in the tree is reported as merged into the skill that declares it and `index`
+      draws it there; a source two skills claim is reported and left dropped. `verify` also
+      reports a declared merged skill with no `dev/<slug>/merge-audit.md` in the nearest
+      `dev/` at or above the tree, stopping at the repository root. Open: the audit's
+      contents are not compared with the declaration, because the market's four audits
+      record their sources in three shapes; `--source-book` attribution still inverts
+      `superseded-by` edges rather than reading `merged-from`; and `merge-migrate` does not
+      yet write the key.
 - [x] **`exegesis normalize` and `rumdl` fought over the `## Related skills` heading.** DONE (2026-08-07).
       Found while deciding the ledger's heading case (2026-08-07). `related.sectionHeading`
       is lowercase `## Related skills` and `normalize` rewrites the heading to it;
